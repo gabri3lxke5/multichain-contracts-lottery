@@ -87,6 +87,7 @@ export interface RaffleRegistrationInterface extends Interface {
       | "RoleAdminChanged"
       | "RoleGranted"
       | "RoleRevoked"
+      | "SaltGenerated"
       | "Started"
   ): EventFragment;
 
@@ -428,19 +429,19 @@ export namespace ResultsReceivedEvent {
     registrationContractId: BigNumberish,
     drawNumber: BigNumberish,
     numbers: BigNumberish[],
-    winners: AddressLike[]
+    hasWinner: boolean
   ];
   export type OutputTuple = [
     registrationContractId: bigint,
     drawNumber: bigint,
     numbers: bigint[],
-    winners: string[]
+    hasWinner: boolean
   ];
   export interface OutputObject {
     registrationContractId: bigint;
     drawNumber: bigint;
     numbers: bigint[];
-    winners: string[];
+    hasWinner: boolean;
   }
   export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
   export type Filter = TypedDeferredTopicFilter<Event>;
@@ -499,6 +500,25 @@ export namespace RoleRevokedEvent {
     role: string;
     account: string;
     sender: string;
+  }
+  export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
+  export type Filter = TypedDeferredTopicFilter<Event>;
+  export type Log = TypedEventLog<Event>;
+  export type LogDescription = TypedLogDescription<Event>;
+}
+
+export namespace SaltGeneratedEvent {
+  export type InputTuple = [
+    registrationContractId: BigNumberish,
+    drawNumber: BigNumberish
+  ];
+  export type OutputTuple = [
+    registrationContractId: bigint,
+    drawNumber: bigint
+  ];
+  export interface OutputObject {
+    registrationContractId: bigint;
+    drawNumber: bigint;
   }
   export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
   export type Filter = TypedDeferredTopicFilter<Event>;
@@ -934,6 +954,13 @@ export interface RaffleRegistration extends BaseContract {
     RoleRevokedEvent.OutputObject
   >;
   getEvent(
+    key: "SaltGenerated"
+  ): TypedContractEvent<
+    SaltGeneratedEvent.InputTuple,
+    SaltGeneratedEvent.OutputTuple,
+    SaltGeneratedEvent.OutputObject
+  >;
+  getEvent(
     key: "Started"
   ): TypedContractEvent<
     StartedEvent.InputTuple,
@@ -1030,7 +1057,7 @@ export interface RaffleRegistration extends BaseContract {
       RegistrationsOpenEvent.OutputObject
     >;
 
-    "ResultsReceived(uint256,uint256,uint256[],address[])": TypedContractEvent<
+    "ResultsReceived(uint256,uint256,uint256[],bool)": TypedContractEvent<
       ResultsReceivedEvent.InputTuple,
       ResultsReceivedEvent.OutputTuple,
       ResultsReceivedEvent.OutputObject
@@ -1072,6 +1099,17 @@ export interface RaffleRegistration extends BaseContract {
       RoleRevokedEvent.InputTuple,
       RoleRevokedEvent.OutputTuple,
       RoleRevokedEvent.OutputObject
+    >;
+
+    "SaltGenerated(uint256,uint256)": TypedContractEvent<
+      SaltGeneratedEvent.InputTuple,
+      SaltGeneratedEvent.OutputTuple,
+      SaltGeneratedEvent.OutputObject
+    >;
+    SaltGenerated: TypedContractEvent<
+      SaltGeneratedEvent.InputTuple,
+      SaltGeneratedEvent.OutputTuple,
+      SaltGeneratedEvent.OutputObject
     >;
 
     "Started(uint256)": TypedContractEvent<
