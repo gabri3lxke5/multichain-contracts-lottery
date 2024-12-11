@@ -1,5 +1,5 @@
+const lottoDrawAddress = '0x05768976f9f4bb60355ae65d55adf7ae19fa5e7a379dfe084a231a80850bdba7';
 const lottoManagerAddress = 'YuCwFXie1QX7pPyvL8dHYGCX6gpCPB4aWchzb2bSYSgdrvu';
-const lottoDrawAddress = '0x094ecb79a66578ab2029c519f161d025e96c85b43d9c1e42717ee60eaa385a6e';
 const shibuyaRegistrationContractAddress = 'ZkMmwcAsCuFPB13kfXH6aQiJYAfnQYC2qMiK5h1mGKsMX86';
 const moonbaseRegistrationContractAddress = '0x991926D5ca21EF2938B5BAffbf4EC24fB55e205e';
 const minatoRegistrationContractAddress = '0xA8AE9c3F7bc784Ccd1E6013c59A233600C6dE90A';
@@ -101,7 +101,7 @@ class TestnetConfig implements Config {
         address = lottoDrawAddress;
     };
     lottoRegistrations = [registrationContractShibuya, registrationContractMinato, registrationContractMoonbase];
-    indexer = "https://query.substrate.fi/lotto-subquery-shibuya";
+    indexer = "https://query.substrate.fi/lotto-multichain-subquery-testnet";
 }
 
 export let config : Config;
