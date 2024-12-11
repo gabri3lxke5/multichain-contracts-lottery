@@ -94,7 +94,7 @@ impl Indexer {
         ];
         // build the filter
         let mut filter = format!(
-            r#"filter:{{and:[{{numRaffle:{{equalTo:\"{}\"}}}}"#,
+            r#"filter:{{and:[{{drawNumber:{{equalTo:\"{}\"}}}}"#,
             draw_number
         );
         for n in numbers {
@@ -152,7 +152,7 @@ impl Indexer {
             ("Accept".into(), "application/json".into())
         ];
         // build the filter
-        let filter = format!(r#"filter:{{numRaffle:{{equalTo:\"{}\"}}}}"#, draw_number);
+        let filter = format!(r#"filter:{{drawNumber:{{equalTo:\"{}\"}}}}"#, draw_number);
 
         // build the body
         let body = format!(
