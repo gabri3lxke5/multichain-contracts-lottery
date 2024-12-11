@@ -12,6 +12,8 @@ enum RequestType {SET_CONFIG_AND_START, OPEN_REGISTRATIONS, CLOSE_REGISTRATIONS,
 
 const abiCoder = ethers.AbiCoder.defaultAbiCoder();
 
+const registrationContractId = 33;
+
 describe('Test raffle life cycle', () => {
 
   async function registerAttestor(contract: RaffleRegistration, owner : Signer, attestor : Signer){
@@ -32,8 +34,7 @@ describe('Test raffle life cycle', () => {
       attestor : Signer,
       nbNumber: number,
       min: number,
-      max : number,
-      registrationContractId: number
+      max : number
   ) {
 
     // preconditions
@@ -55,7 +56,8 @@ describe('Test raffle life cycle', () => {
         [RequestType.SET_CONFIG_AND_START, request_bytes]
     );
     const reply = '0x00' + action.substring(2);
-    await expect(contract.connect(attestor).rollupU256CondEq([], [], [], [], [reply])).not.to.be.reverted;
+    await expect(contract.connect(attestor).rollupU256CondEq([], [], [], [], [reply]))
+      .to.emit(contract, 'ConfigUpdated').withArgs(nbNumber, min, max);
 
     // check post conditions
     expect (await contract.nbNumbers()).to.equal(nbNumber);
@@ -88,7 +90,9 @@ describe('Test raffle life cycle', () => {
         [RequestType.OPEN_REGISTRATIONS, request_bytes]
     );
     const reply = '0x00' + action.substring(2);
-    await expect(contract.connect(attestor).rollupU256CondEq([], [], [], [], [reply])).not.to.be.reverted;
+    await expect(contract.connect(attestor).rollupU256CondEq([], [], [], [], [reply]))
+      .to.emit(contract, 'RegistrationsOpen')
+      .withArgs(registrationContractId, drawNumber);
 
     // check post conditions
     expect (await contract.getStatus()).to.equal(Status.RegistrationsOpen);
@@ -116,7 +120,9 @@ describe('Test raffle life cycle', () => {
         [RequestType.CLOSE_REGISTRATIONS, request_bytes]
     );
     const reply = '0x00' + action.substring(2);
-    await expect(contract.connect(attestor).rollupU256CondEq([], [], [], [], [reply])).not.to.be.reverted;
+    await expect(contract.connect(attestor).rollupU256CondEq([], [], [], [], [reply]))
+      .to.emit(contract, 'RegistrationsClosed')
+      .withArgs(registrationContractId, drawNumber);
 
     // check post conditions
     expect (await contract.getStatus()).to.equal(Status.RegistrationsClosed);
@@ -145,7 +151,9 @@ describe('Test raffle life cycle', () => {
       [RequestType.GENERATE_SALT, request_bytes]
     );
     const reply = '0x00' + action.substring(2);
-    await expect(contract.connect(attestor).rollupU256CondEq([], [], [], [], [reply])).not.to.be.reverted;
+    await expect(contract.connect(attestor).rollupU256CondEq([], [], [], [], [reply]))
+      .to.emit(contract, 'SaltGenerated')
+      .withArgs(registrationContractId, drawNumber);
 
     // check post conditions
     expect (await contract.getStatus()).to.equal(Status.SaltGenerated);
@@ -176,7 +184,9 @@ describe('Test raffle life cycle', () => {
         [RequestType.SET_RESULTS, request_bytes]
     );
     const reply = '0x00' + action.substring(2);
-    await expect(contract.connect(attestor).rollupU256CondEq([], [], [], [], [reply])).not.to.be.reverted;
+    await expect(contract.connect(attestor).rollupU256CondEq([], [], [], [], [reply]))
+      .to.emit(contract, 'ResultsReceived')
+      .withArgs(registrationContractId, drawNumber, numbers, hasWinner);
 
     // check post conditions
     expect (await contract.getStatus()).to.equal(Status.ResultsReceived);
@@ -205,7 +215,7 @@ describe('Test raffle life cycle', () => {
     const {contract, attestor} = await loadFixture(deployContractFixture);
 
     // config and start the raffle
-    await setConfigAndStart(contract, attestor, 4, 1, 50, 33);
+    await setConfigAndStart(contract, attestor, 4, 1, 50);
 
     // open the registrations for the draw number 11
     await openRegistrations(contract, attestor, 11);
@@ -217,7 +227,7 @@ describe('Test raffle life cycle', () => {
     const {contract, owner, attestor, addr1, addr2} = await deployContractFixture();
 
     // config and start the raffle
-    await setConfigAndStart(contract, attestor, 4, 1, 50, 33);
+    await setConfigAndStart(contract, attestor, 4, 1, 50);
 
     // open the registrations for the draw number 11
     await openRegistrations(contract, attestor, 11);
