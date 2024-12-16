@@ -61,6 +61,16 @@ async fn alice_configures_raffle_manager(
         .call(&ink_e2e::alice(), set_registration_contracts, 0, None)
         .await
         .expect("set registration contracts failed");
+
+    let min_number_salts = registration_contracts.len() as u8;
+    let set_min_number_salts =
+        build_message::<lotto_registration_manager_contract::ContractRef>(contract_id.clone())
+            .call(|contract| contract.set_min_number_salts(min_number_salts));
+
+    client
+        .call(&ink_e2e::alice(), set_min_number_salts, 0, None)
+        .await
+        .expect("set minimum number of salts failed");
 }
 
 async fn alice_grants_bob_as_attestor(
@@ -200,24 +210,22 @@ async fn attestor_sends_all_registrations_closed(
     let result = client
         .call(&ink_e2e::bob(), rollup_cond_eq, 0, None)
         .await
-        .expect("send config propagated failed");
+        .expect("send registration closed failed");
     // two events : MessageProcessedTo and RaffleDone
     assert!(result.contains_event("Contracts", "ContractEmitted"));
 }
 
-async fn attestor_sends_winning_numbers(
+async fn attestor_sends_salts(
     client: &mut ink_e2e::Client<PolkadotConfig, DefaultEnvironment>,
     contract_id: &AccountId,
     draw_number: DrawNumber,
-    numbers: Vec<Number>,
+    contract_salts : Vec<(RegistrationContractId, Salt)>,
     queue_head: u32,
 ) {
-    let config_hash: [u8; 32] = hex::decode("1af688b7e4ccbd51529a15d28753270a04adf361d4eb1cbd9553ef19d353c656")
-        .expect("hex decode failed")
-        .try_into()
-        .expect("incorrect length");
-    let payload =
-        LottoManagerResponseMessage::WinningNumbers(draw_number, numbers.clone(), config_hash.into());
+    let payload = LottoManagerResponseMessage::SaltGenerated(
+        draw_number,
+        contract_salts.clone(),
+    );
 
     let actions = vec![
         HandleActionInput::Reply(payload.encode()),
@@ -230,7 +238,36 @@ async fn attestor_sends_winning_numbers(
     let result = client
         .call(&ink_e2e::bob(), rollup_cond_eq, 0, None)
         .await
-        .expect("send result failed");
+        .expect("save salts failed");
+    // two events : MessageProcessedTo and RaffleDone
+    assert!(result.contains_event("Contracts", "ContractEmitted"));
+}
+
+
+async fn attestor_sends_winning_numbers(
+    client: &mut ink_e2e::Client<PolkadotConfig, DefaultEnvironment>,
+    contract_id: &AccountId,
+    draw_number: DrawNumber,
+    numbers: Vec<Number>,
+    config_salt_hash: [u8; 32],
+    queue_head: u32,
+) {
+
+    let payload =
+        LottoManagerResponseMessage::WinningNumbers(draw_number, numbers.clone(), config_salt_hash.into());
+
+    let actions = vec![
+        HandleActionInput::Reply(payload.encode()),
+        HandleActionInput::SetQueueHead(queue_head),
+    ];
+    let rollup_cond_eq =
+        build_message::<lotto_registration_manager_contract::ContractRef>(contract_id.clone())
+            .call(|contract| contract.rollup_cond_eq(vec![], vec![], actions.clone()));
+
+    let result = client
+        .call(&ink_e2e::bob(), rollup_cond_eq, 0, None)
+        .await
+        .      expect("send result failed");
     // two events : MessageProcessedTo and RaffleDone
     assert!(result.contains_event("Contracts", "ContractEmitted"));
 }
@@ -637,32 +674,77 @@ async fn test_raffles(mut client: ink_e2e::Client<C, E>) -> E2EResult<()> {
     .await;
     queue_head += 1;
 
-    // all contracts are synched, send the results
+    // all contracts are synched, generate the salts
     // check the message in the queue
     let messages = get_messages_in_queue(&mut client, &contract_id).await;
     assert_eq!(messages.len(), 1);
     assert_eq!(
         messages[0],
-        LottoManagerRequestMessage::DrawNumbers(draw_number, config,)
+        LottoManagerRequestMessage::GenerateSalt(draw_number, vec![101, 102, 103])
     );
+    // send the salts
+    attestor_sends_salts(
+        &mut client,
+        &contract_id,
+        draw_number,
+        vec![(103, [3u8;32].to_vec())],
+        queue_head,
+    ).await;
+    queue_head += 1;
+
+    // all contracts are not synched
+    // check the message in the queue
+    assert_eq!(true, has_pending_message(&mut client, &contract_id).await);
+    let messages = get_messages_in_queue(&mut client, &contract_id).await;
+    assert_eq!(messages.len(), 1);
+    assert_eq!(
+        messages[0],
+        LottoManagerRequestMessage::GenerateSalt(draw_number, vec![101, 102])
+    );
+    // send the salts
+    attestor_sends_salts(
+        &mut client,
+        &contract_id,
+        draw_number,
+        vec![(101, [1u8;32].to_vec()), (102, [2u8;32].to_vec())],
+        queue_head,
+    ).await;
+    queue_head += 1;
+
+    // all contracts are synched, send the results
+    // check the message in the queue
+    let generated_salt: [u8;32] = [101, 183, 131, 128, 194, 210, 6, 186, 135, 158, 6, 247, 69, 144, 120, 98, 45, 169, 95, 8, 91, 222, 225, 175, 72, 14, 187, 148, 7, 210, 251, 70];
+    let messages = get_messages_in_queue(&mut client, &contract_id).await;
+    assert_eq!(messages.len(), 1);
+    assert_eq!(
+        messages[0],
+        LottoManagerRequestMessage::DrawNumbers(draw_number, config, generated_salt.to_vec())
+    );
+
+    let config_salt_hash: [u8;32] = hex::decode("94e1fa775bc259340a60dda2a2f10e911b6343e6ab0932726c738097c8fc3521")
+        .expect("hex decode failed")
+        .try_into()
+        .expect("incorrect length");
 
     let numbers: Vec<Number> = vec![5, 40, 8, 2];
     let numbers_hash: [u8;32] = hex::decode("0c70b0cb9b2d87768d1efacd6ca6a89be08a4c8c70855b54455f7f46caeeb155")
         .expect("hex decode failed")
         .try_into()
         .expect("incorrect length");
+
     attestor_sends_winning_numbers(
         &mut client,
         &contract_id,
         draw_number,
         numbers.clone(),
+        config_salt_hash,
         queue_head,
     )
     .await;
     queue_head += 1;
 
     assert_eq!(
-        raffle_manager::Status::WaitingWinners,
+        raffle_manager::Status::WaitingWinner,
         get_manager_status(&mut client, &contract_id).await
     );
 
@@ -688,7 +770,7 @@ async fn test_raffles(mut client: ink_e2e::Client<C, E>) -> E2EResult<()> {
     queue_head += 1;
 
     assert_eq!(
-        raffle_manager::Status::Closed,
+        raffle_manager::Status::DrawFinished,
         get_manager_status(&mut client, &contract_id).await
     );
 
