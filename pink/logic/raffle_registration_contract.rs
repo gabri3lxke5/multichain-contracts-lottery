@@ -1,17 +1,19 @@
 extern crate alloc;
 
 use crate::error::RaffleDrawError;
-use crate::types::{AccountId32, DrawNumber, Number, RaffleConfig, RegistrationContractId};
+use crate::types::{DrawNumber, Number, RaffleConfig, RegistrationContractId};
 use alloc::vec::Vec;
 
 #[derive(scale::Encode, scale::Decode, Eq, PartialEq, Clone, Copy, Debug)]
 pub enum RaffleRegistrationStatus {
     NotStarted,
     Started,
-    RegistrationOpen,
-    RegistrationClosed,
+    RegistrationsOpen,
+    RegistrationsClosed,
+    SaltGenerated,
     ResultsReceived,
 }
+
 
 /// Message sent by the offchain rollup to the Raffle Registration Contracts
 #[derive(scale::Encode, scale::Decode, Debug, Clone)]
@@ -22,8 +24,10 @@ pub enum RequestForAction {
     OpenRegistrations(DrawNumber),
     /// close the registrations for the given draw number
     CloseRegistrations(DrawNumber),
-    /// set the results (winning numbers and winner addresses) for the given draw number
-    SetResults(DrawNumber, Vec<Number>, Vec<AccountId32>),
+    /// generate the salt used by VRF
+    GenerateSalt(DrawNumber),
+    /// set the results (winning numbers + true or false if we have a winner) for the given draw number
+    SetResults(DrawNumber, Vec<Number>, bool),
 }
 
 pub trait RaffleRegistrationContract {

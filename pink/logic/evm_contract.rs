@@ -1,13 +1,12 @@
 extern crate alloc;
 
 use crate::error::RaffleDrawError::{self, *};
-use crate::types::*;
-use alloc::boxed::Box;
-use alloc::vec::Vec;
-use ethabi::{ParamType, Token};
 use crate::raffle_registration_contract::{
     RaffleRegistrationContract, RaffleRegistrationStatus, RequestForAction,
 };
+use crate::types::*;
+use alloc::vec::Vec;
+use ethabi::{ParamType, Token};
 use kv_session::traits::KvSession;
 use phat_offchain_rollup::{clients::evm::EvmRollupClient, Action};
 use pink_extension::ResultExt;
@@ -87,7 +86,8 @@ fn encode_request(request: &RequestForAction) -> Result<Vec<u8>, RaffleDrawError
     const REQUEST_SET_CONFIG: u8 = 0;
     const REQUEST_OPEN_REGISTRATIONS: u8 = 1;
     const REQUEST_CLOSE_REGISTRATIONS: u8 = 2;
-    const REQUEST_SET_RESULTS: u8 = 3;
+    const REQUEST_GENERATE_SALT: u8 = 3;
+    const REQUEST_SET_RESULTS: u8 = 4;
 
     let encoded = match &request {
         RequestForAction::SetConfigAndStart(config, contract_id) => {
@@ -119,18 +119,24 @@ fn encode_request(request: &RequestForAction) -> Result<Vec<u8>, RaffleDrawError
                 Token::Bytes(body),
             ])
         }
-        RequestForAction::SetResults(draw_number, ref numbers, ref winners) => {
+        RequestForAction::GenerateSalt(draw_number) => {
+            let draw_number = *draw_number as u128;
+            let body = ethabi::encode(&[Token::Uint(draw_number.into())]);
+            ethabi::encode(&[
+                Token::Uint(REQUEST_GENERATE_SALT.into()),
+                Token::Bytes(body),
+            ])
+        }
+        RequestForAction::SetResults(draw_number, ref numbers, has_winner) => {
             let draw_number = *draw_number as u128;
             let numbers: Vec<Token> = numbers
                 .into_iter()
                 .map(|n: &Number| Token::Uint((*n).into()))
                 .collect();
-            let winners: Vec<Token> = Vec::new(); // winners.into_iter().map(|a: &AccountId20| Token::Address((*a).into())).collect();
-                                                  // TODO manage winners
             let body = ethabi::encode(&[
                 Token::Uint(draw_number.into()),
                 Token::Array(numbers),
-                Token::Array(winners),
+                Token::Bool(*has_winner),
             ]);
             ethabi::encode(&[Token::Uint(REQUEST_SET_RESULTS.into()), Token::Bytes(body)])
         }
@@ -226,9 +232,10 @@ fn decode_status(raw: &[u8]) -> Result<RaffleRegistrationStatus, RaffleDrawError
     let status = match status.as_u32() {
         0 => RaffleRegistrationStatus::NotStarted,
         1 => RaffleRegistrationStatus::Started,
-        2 => RaffleRegistrationStatus::RegistrationOpen,
-        3 => RaffleRegistrationStatus::RegistrationClosed,
-        4 => RaffleRegistrationStatus::ResultsReceived,
+        2 => RaffleRegistrationStatus::RegistrationsOpen,
+        3 => RaffleRegistrationStatus::RegistrationsClosed,
+        4 => RaffleRegistrationStatus::SaltGenerated,
+        5 => RaffleRegistrationStatus::ResultsReceived,
         _ => return Err(FailedToDecodeStatus),
     };
 
@@ -237,8 +244,9 @@ fn decode_status(raw: &[u8]) -> Result<RaffleRegistrationStatus, RaffleDrawError
 
 #[cfg(test)]
 mod tests {
-    use crate::raffle_registration_contract::RaffleRegistrationStatus::Started;
     use super::*;
+    use crate::raffle_registration_contract::RaffleRegistrationStatus::Started;
+    use alloc::boxed::Box;
 
     #[ink::test]
     fn encode_request_set_config_and_start() {
@@ -292,17 +300,30 @@ mod tests {
     }
 
     #[ink::test]
-    fn encode_request_set_results() {
+    fn encode_request_generate_salt() {
         let draw_number = 11;
-        let numbers = vec![33, 47, 5, 6];
-        let winners = vec![];
 
-        let request = RequestForAction::SetResults(draw_number, numbers, winners);
+        let request = RequestForAction::GenerateSalt(draw_number);
 
         let encoded_request = encode_request(&request).expect("Failed to encode request");
         ink::env::debug_println!("Encoded request: {encoded_request:02x?}");
 
-        let expected : Vec<u8> = hex::decode("000000000000000000000000000000000000000000000000000000000000000300000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000120000000000000000000000000000000000000000000000000000000000000000b0000000000000000000000000000000000000000000000000000000000000060000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000021000000000000000000000000000000000000000000000000000000000000002f000000000000000000000000000000000000000000000000000000000000000500000000000000000000000000000000000000000000000000000000000000060000000000000000000000000000000000000000000000000000000000000000")
+        let expected : Vec<u8> = hex::decode("000000000000000000000000000000000000000000000000000000000000000300000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000b")
+            .expect("hex decode failed");
+        assert_eq!(expected, encoded_request);
+    }
+
+    #[ink::test]
+    fn encode_request_set_results() {
+        let draw_number = 11;
+        let numbers = vec![33, 47, 5, 6];
+
+        let request = RequestForAction::SetResults(draw_number, numbers, false);
+
+        let encoded_request = encode_request(&request).expect("Failed to encode request");
+        ink::env::debug_println!("Encoded request: {encoded_request:02x?}");
+
+        let expected : Vec<u8> = hex::decode("000000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000b0000000000000000000000000000000000000000000000000000000000000060000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000021000000000000000000000000000000000000000000000000000000000000002f00000000000000000000000000000000000000000000000000000000000000050000000000000000000000000000000000000000000000000000000000000006")
             .expect("hex decode failed");
         assert_eq!(expected, encoded_request);
     }
@@ -325,16 +346,22 @@ mod tests {
             hex::decode("0000000000000000000000000000000000000000000000000000000000000002")
                 .expect("hex decode failed");
         let status = super::decode_status(raw.as_slice()).expect("Fail to decode status");
-        assert_eq!(status, RaffleRegistrationStatus::RegistrationOpen);
+        assert_eq!(status, RaffleRegistrationStatus::RegistrationsOpen);
 
         let raw: Vec<u8> =
             hex::decode("0000000000000000000000000000000000000000000000000000000000000003")
                 .expect("hex decode failed");
         let status = super::decode_status(raw.as_slice()).expect("Fail to decode status");
-        assert_eq!(status, RaffleRegistrationStatus::RegistrationClosed);
+        assert_eq!(status, RaffleRegistrationStatus::RegistrationsClosed);
 
         let raw: Vec<u8> =
             hex::decode("0000000000000000000000000000000000000000000000000000000000000004")
+                .expect("hex decode failed");
+        let status = super::decode_status(raw.as_slice()).expect("Fail to decode status");
+        assert_eq!(status, RaffleRegistrationStatus::SaltGenerated);
+
+        let raw: Vec<u8> =
+            hex::decode("0000000000000000000000000000000000000000000000000000000000000005")
                 .expect("hex decode failed");
         let status = super::decode_status(raw.as_slice()).expect("Fail to decode status");
         assert_eq!(status, RaffleRegistrationStatus::ResultsReceived);
@@ -484,7 +511,7 @@ mod tests {
         pink_extension_runtime::mock_ext::mock_all_ext();
 
         let expected_draw_number = Some(1);
-        let expected_status = Some(RaffleRegistrationStatus::RegistrationOpen);
+        let expected_status = Some(RaffleRegistrationStatus::RegistrationsOpen);
         let action = RequestForAction::OpenRegistrations(1);
 
         test_do_action(
@@ -500,8 +527,24 @@ mod tests {
         pink_extension_runtime::mock_ext::mock_all_ext();
 
         let expected_draw_number = Some(1);
-        let expected_status = Some(RaffleRegistrationStatus::RegistrationClosed);
+        let expected_status = Some(RaffleRegistrationStatus::RegistrationsClosed);
         let action = RequestForAction::CloseRegistrations(1);
+
+        test_do_action(
+            expected_draw_number,
+            expected_status,
+            action,
+        );
+    }
+
+    #[ink::test]
+    #[ignore = "The contract must be deployed on the EVM node"]
+    fn test_generate_salt() {
+        pink_extension_runtime::mock_ext::mock_all_ext();
+
+        let expected_draw_number = Some(1);
+        let expected_status = Some(RaffleRegistrationStatus::RegistrationsClosed);
+        let action = RequestForAction::GenerateSalt(1);
 
         test_do_action(
             expected_draw_number,
@@ -517,7 +560,7 @@ mod tests {
 
         let expected_draw_number = Some(1);
         let expected_status = Some(RaffleRegistrationStatus::ResultsReceived);
-        let action = RequestForAction::SetResults(1, vec![1, 2, 3, 4], vec![]);
+        let action = RequestForAction::SetResults(1, vec![1, 2, 3, 4], false);
 
         test_do_action(
             expected_draw_number,

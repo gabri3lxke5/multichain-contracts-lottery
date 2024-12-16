@@ -19,7 +19,6 @@ pub struct IndexerParticipationsResponse<'a> {
 }
 
 #[derive(Deserialize, Encode, Clone, Debug, PartialEq)]
-#[allow(non_snake_case)]
 struct IndexerParticipationsResponseData<'a> {
     #[serde(borrow)]
     participations: Participations<'a>,
@@ -39,29 +38,27 @@ struct ParticipationNode<'a> {
 
 /// DTO use for serializing and deserializing the json when querying the hashes
 #[derive(Deserialize, Encode, Clone, Debug, PartialEq)]
-pub struct IndexerHashesResponse<'a> {
+pub struct IndexerRafflesResponse<'a> {
     #[serde(borrow)]
-    data: IndexerHashesResponseData<'a>,
+    data: IndexerRafflesResponseData<'a>,
+}
+
+#[derive(Deserialize, Encode, Clone, Debug, PartialEq)]
+struct IndexerRafflesResponseData<'a> {
+    #[serde(borrow)]
+    raffles: RaffleNodes<'a>,
+}
+
+#[derive(Deserialize, Encode, Clone, Debug, PartialEq)]
+struct RaffleNodes<'a> {
+    #[serde(borrow)]
+    nodes: Vec<RaffleNode<'a>>,
 }
 
 #[derive(Deserialize, Encode, Clone, Debug, PartialEq)]
 #[allow(non_snake_case)]
-struct IndexerHashesResponseData<'a> {
-    #[serde(borrow)]
-    endRaffles: EndRaffle<'a>,
-}
-
-#[derive(Deserialize, Encode, Clone, Debug, PartialEq)]
-struct EndRaffle<'a> {
-    #[serde(borrow)]
-    nodes: Vec<EndRaffleNode<'a>>,
-}
-
-#[derive(Deserialize, Encode, Clone, Debug, PartialEq)]
-#[allow(non_snake_case)]
-struct EndRaffleNode<'a> {
-    lottoId: &'a str,
-    hash: &'a str,
+struct RaffleNode<'a> {
+    closingHash: &'a str,
 }
 
 pub struct Indexer {
@@ -75,7 +72,7 @@ impl Indexer {
     }
 
     pub fn query_winners(
-        self,
+        &self,
         draw_number: DrawNumber,
         numbers: &Vec<Number>,
     ) -> Result<(Vec<AccountId32>, Vec<AccountId20>), RaffleDrawError> {
@@ -112,7 +109,7 @@ impl Indexer {
         debug!("body: {body}");
 
         // query the indexer
-        let resp = http_post!(self.endpoint, body, headers);
+        let resp = http_post!(self.endpoint.clone(), body, headers);
 
         // check the result
         if resp.status_code != 200 {
@@ -143,8 +140,8 @@ impl Indexer {
         Ok((winners, Vec::new())) // TODO manage AccountId32 and AccountId20
     }
 
-    pub fn query_hashes(self, draw_number: DrawNumber) -> Result<Vec<Hash>, RaffleDrawError> {
-        info!("Query hashes for raffle id {draw_number}");
+    pub fn query_salt(&self, draw_number: DrawNumber, registration_contract_id: RegistrationContractId) -> Result<Salt, RaffleDrawError> {
+        info!("Query salt for raffle {draw_number} and contract {registration_contract_id}");
 
         // build the headers
         let headers = alloc::vec![
@@ -152,18 +149,20 @@ impl Indexer {
             ("Accept".into(), "application/json".into())
         ];
         // build the filter
-        let filter = format!(r#"filter:{{drawNumber:{{equalTo:\"{}\"}}}}"#, draw_number);
+        let filter = format!(
+            r#"filter:{{and:[{{drawNumber:{{equalTo:\"{draw_number}\"}}}},{{registrationContractId:{{equalTo:\"{registration_contract_id}\"}}}}]}}"#,
+        );
 
         // build the body
         let body = format!(
-            r#"{{"query" : "{{endRaffle({}){{ nodes {{ lottoId, hash }} }} }}"}}"#,
+            r#"{{"query" : "{{raffles({}){{ nodes {{ closingHash }} }} }}"}}"#,
             filter
         );
 
         debug!("body: {body}");
 
         // query the indexer
-        let resp = http_post!(self.endpoint, body, headers);
+        let resp = http_post!(self.endpoint.clone(), body, headers);
 
         // check the result
         if resp.status_code != 200 {
@@ -172,24 +171,19 @@ impl Indexer {
         }
 
         // parse the result
-        let result: IndexerHashesResponse = serde_json_core::from_slice(resp.body.as_slice())
+        let result: IndexerRafflesResponse = serde_json_core::from_slice(resp.body.as_slice())
             .or(Err(InvalidResponseBody))?
             .0;
 
-        // add the hashes
-        let mut hashes = Vec::new();
-        for node in result.data.endRaffles.nodes.iter() {
-            // build the accountId from the string address
-            let hash_raw: [u8; 32] = hex::decode(node.hash)
-                .expect("hex decode failed")
-                .try_into()
-                .expect("incorrect length");
-            hashes.push(hash_raw);
+        if let Some(node) = result.data.raffles.nodes.iter().next() {
+            // remove the prefix 0x
+            let without_0x = node.closingHash.get(2..).ok_or(InvalidResponseBody)?;
+            let salt = hex::decode(without_0x).expect("hex decode failed");
+            info!("Salt: {salt:02x?}");
+            Ok(salt)
+        } else {
+            Err(NoSalt)
         }
-
-        info!("Hashes: {hashes:02x?}");
-
-        Ok(hashes)
     }
 }
 
@@ -199,11 +193,22 @@ mod tests {
 
     fn new_indexer() -> Indexer {
         Indexer {
-            endpoint: "https://query.substrate.fi/lotto-subquery-shibuya".to_string(),
+            endpoint: "https://query.substrate.fi/lotto-multichain-subquery-testnet".to_string(),
         }
     }
 
-    // TODO ink::test or test
+    #[ink::test]
+    fn test_get_salt() {
+        pink_extension_runtime::mock_ext::mock_all_ext();
+
+        let draw_num = 1;
+        let contract_id = 10;
+
+        let indexer = new_indexer();
+        let salt = indexer.query_salt(draw_num, contract_id).unwrap();
+        ink::env::debug_println!("salt: {salt:?}");
+    }
+
     #[ink::test]
     fn test_get_winners() {
         pink_extension_runtime::mock_ext::mock_all_ext();

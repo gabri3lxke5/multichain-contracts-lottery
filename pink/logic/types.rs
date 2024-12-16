@@ -1,4 +1,5 @@
 use ink::prelude::string::String;
+use ink::prelude::vec::Vec;
 
 pub type RegistrationContractId = u128;
 pub type DrawNumber = u32;
@@ -8,6 +9,7 @@ pub type EvmContractId = [u8; 20];
 pub type AccountId32 = [u8; 32];
 pub type AccountId20 = [u8; 20];
 pub type Hash = [u8; 32];
+pub type Salt = Vec<u8>;
 
 #[derive(scale::Encode, scale::Decode, Debug, Clone)]
 #[cfg_attr(

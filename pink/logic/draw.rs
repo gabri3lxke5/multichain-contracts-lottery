@@ -8,8 +8,9 @@ use pink_extension::{info, vrf};
 #[derive(scale::Encode)]
 struct SaltVrf {
     contract_id: WasmContractId,
+    salt: Salt,
     draw_number: DrawNumber,
-    hashes: Vec<Hash>,
+    number: u8,
 }
 
 pub struct Draw {
@@ -42,10 +43,10 @@ impl Draw {
         &self,
         contract_id: WasmContractId,
         draw_number: DrawNumber,
-        hashes: Vec<Hash>,
+        salt: Vec<u8>,
         numbers: Vec<Number>,
     ) -> Result<bool, RaffleDrawError> {
-        let winning_numbers = self.get_numbers(contract_id, draw_number, hashes)?;
+        let winning_numbers = self.get_numbers(contract_id, draw_number, salt)?;
         if winning_numbers.len() != numbers.len() {
             return Ok(false);
         }
@@ -63,31 +64,33 @@ impl Draw {
         &self,
         contract_id: WasmContractId,
         draw_number: DrawNumber,
-        hashes: Vec<Hash>,
+        salt: Salt,
     ) -> Result<Vec<Number>, RaffleDrawError> {
         use ink::env::hash;
 
         let mut numbers = Vec::new();
         let mut i: u8 = 0;
 
-        let salt = SaltVrf {
+        // build a salt for this lotto_draw number and this number
+        let mut salt_vrf = SaltVrf {
+            salt,
             contract_id,
             draw_number,
-            hashes,
+            number: i
         };
 
-        let encoded_salt = scale::Encode::encode(&salt);
-        let mut salt_hash = <hash::Blake2x256 as hash::HashOutput>::Type::default();
-        ink::env::hash_bytes::<hash::Blake2x256>(&encoded_salt, &mut salt_hash);
-
         while numbers.len() < self.nb_numbers as usize {
-            // build a salt for this lotto_draw number
-            let mut salt: Vec<u8> = Vec::new();
-            salt.extend_from_slice(&i.to_be_bytes());
-            salt.extend_from_slice(&salt_hash); // TODO maybe include i in hash salt
+
+            // update the number for this salt
+            salt_vrf.number = i;
+
+            // hash the encoded salt
+            let encoded_salt_vrf = scale::Encode::encode(&salt_vrf);
+            let mut salt_hash_vrf = <hash::Blake2x256 as hash::HashOutput>::Type::default();
+            ink::env::hash_bytes::<hash::Blake2x256>(&encoded_salt_vrf, &mut salt_hash_vrf);
 
             // lotto_draw the number
-            let number = self.get_number(salt, self.smallest_number, self.biggest_number)?;
+            let number = self.get_number(&salt_hash_vrf, self.smallest_number, self.biggest_number)?;
             // check if the number has already been drawn
             if !numbers.iter().any(|&n| n == number) {
                 // the number has not been drawn yet => we added it
@@ -104,12 +107,12 @@ impl Draw {
 
     fn get_number(
         &self,
-        salt: Vec<u8>,
+        salt: &[u8],
         min: Number,
         max: Number,
     ) -> Result<Number, RaffleDrawError> {
-        let output = vrf(&salt);
-        // keep only 8 bytes to compute the random u6²
+        let output = vrf(salt);
+        // keep only 8 bytes to compute the random u64
         let mut arr = [0x00; 8];
         arr.copy_from_slice(&output[0..8]);
         let rand_u64 = u64::from_le_bytes(arr);
@@ -142,12 +145,12 @@ mod tests {
         let biggest_number = 50;
         let contract_id = [1; 32];
         let draw_number = 1;
-        let hashes = vec![];
+        let salt = vec![1u8; 32];
 
         let draw =
             Draw::new(nb_numbers, smallest_number, biggest_number).expect("Fail to init the draw");
 
-        let result = draw.get_numbers(contract_id, draw_number, hashes).unwrap();
+        let result = draw.get_numbers(contract_id, draw_number, salt).unwrap();
         assert_eq!(nb_numbers as usize, result.len());
         for &n in result.iter() {
             assert!(n >= smallest_number);
@@ -166,12 +169,12 @@ mod tests {
         let biggest_number = 5;
         let contract_id = [1; 32];
         let draw_number = 1;
-        let hashes = vec![];
+        let salt = vec![1u8; 32];
 
         let draw =
             Draw::new(nb_numbers, smallest_number, biggest_number).expect("Fail to init the draw");
 
-        let result = draw.get_numbers(contract_id, draw_number, hashes).unwrap();
+        let result = draw.get_numbers(contract_id, draw_number, salt).unwrap();
         assert_eq!(nb_numbers as usize, result.len());
         for &n in result.iter() {
             assert!(n >= smallest_number);
@@ -189,19 +192,19 @@ mod tests {
         let nb_numbers = 5;
         let smallest_number = 1;
         let biggest_number = 50;
-        let hashes = vec![];
+        let salt = vec![1u8; 32];
 
         let mut results = Vec::new();
 
         for i in 0..100 {
             let draw = Draw::new(nb_numbers, smallest_number, biggest_number)
                 .expect("Fail to init the draw");
-            let result = draw.get_numbers(contract_id, i, hashes.clone()).unwrap();
+            let result = draw.get_numbers(contract_id, i, salt.clone()).unwrap();
             // this result must be different from the previous ones
             results.iter().for_each(|r| assert_ne!(result, *r));
 
             // same request message means same result
-            let result_2 = draw.get_numbers(contract_id, i, hashes.clone()).unwrap();
+            let result_2 = draw.get_numbers(contract_id, i, salt.clone()).unwrap();
             assert_eq!(result, result_2);
 
             results.push(result);
@@ -217,22 +220,22 @@ mod tests {
         let biggest_number = 50;
         let contract_id = [1; 32];
         let draw_number = 1;
-        let hashes = vec![];
+        let salt = vec![1u8; 32];
 
         let draw =
             Draw::new(nb_numbers, smallest_number, biggest_number).expect("Fail to init the draw");
 
-        let numbers = draw.get_numbers(contract_id, draw_number, hashes.clone()).unwrap();
+        let numbers = draw.get_numbers(contract_id, draw_number, salt.clone()).unwrap();
 
         assert_eq!(
             Ok(true),
-            draw.verify_numbers(contract_id, draw_number, hashes.clone(), numbers.clone())
+            draw.verify_numbers(contract_id, draw_number, salt.clone(), numbers.clone())
         );
 
         // other raffle id
         assert_eq!(
             Ok(false),
-            draw.verify_numbers(contract_id, draw_number + 1, hashes, numbers.clone())
+            draw.verify_numbers(contract_id, draw_number + 1, salt, numbers.clone())
         );
     }
 }

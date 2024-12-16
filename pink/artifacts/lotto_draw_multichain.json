@@ -1,6 +1,6 @@
 {
   "source": {
-    "hash": "0x62d19537e14fab6a8b7aa3f406471c15022b6be8e54b2892635037f3cf33b0c8",
+    "hash": "0x8a35029d660cf889b19b167e68de1887cab6207f78a49fcee83a5f8ea62337ec",
     "language": "ink! 4.3.0",
     "compiler": "rustc 1.80.1",
     "build_info": {
@@ -63,20 +63,20 @@
         "displayName": [
           "ChainExtension"
         ],
-        "type": 40
+        "type": 39
       },
       "hash": {
         "displayName": [
           "Hash"
         ],
-        "type": 38
+        "type": 37
       },
       "maxEventTopics": 4,
       "timestamp": {
         "displayName": [
           "Timestamp"
         ],
-        "type": 39
+        "type": 38
       }
     },
     "events": [],
@@ -421,12 +421,12 @@
             }
           },
           {
-            "label": "hashes",
+            "label": "salt",
             "type": {
               "displayName": [
-                "Vec"
+                "Salt"
               ],
-              "type": 32
+              "type": 9
             }
           },
           {
@@ -444,7 +444,7 @@
               "displayName": [
                 "Number"
               ],
-              "type": 33
+              "type": 32
             }
           },
           {
@@ -453,7 +453,7 @@
               "displayName": [
                 "Number"
               ],
-              "type": 33
+              "type": 32
             }
           },
           {
@@ -462,7 +462,7 @@
               "displayName": [
                 "Vec"
               ],
-              "type": 34
+              "type": 33
             }
           }
         ],
@@ -479,7 +479,7 @@
             "ink",
             "MessageResult"
           ],
-          "type": 35
+          "type": 34
         },
         "selector": "0x810aabee"
       }
@@ -1357,38 +1357,42 @@
               },
               {
                 "index": 14,
-                "name": "IndexerNotConfigured"
+                "name": "NoSalt"
               },
               {
                 "index": 15,
-                "name": "HttpRequestFailed"
+                "name": "IndexerNotConfigured"
               },
               {
                 "index": 16,
-                "name": "InvalidResponseBody"
+                "name": "HttpRequestFailed"
               },
               {
                 "index": 17,
-                "name": "InvalidSs58Address"
+                "name": "InvalidResponseBody"
               },
               {
                 "index": 18,
-                "name": "RaffleConfigInvalid"
+                "name": "InvalidSs58Address"
               },
               {
                 "index": 19,
-                "name": "MinGreaterThanMax"
+                "name": "RaffleConfigInvalid"
               },
               {
                 "index": 20,
-                "name": "AddOverFlow"
+                "name": "MinGreaterThanMax"
               },
               {
                 "index": 21,
-                "name": "SubOverFlow"
+                "name": "AddOverFlow"
               },
               {
                 "index": 22,
+                "name": "SubOverFlow"
+              },
+              {
+                "index": 23,
                 "name": "DivByZero"
               }
             ]
@@ -1954,9 +1958,7 @@
       "id": 32,
       "type": {
         "def": {
-          "sequence": {
-            "type": 1
-          }
+          "primitive": "u16"
         }
       }
     },
@@ -1964,7 +1966,9 @@
       "id": 33,
       "type": {
         "def": {
-          "primitive": "u16"
+          "sequence": {
+            "type": 32
+          }
         }
       }
     },
@@ -1972,22 +1976,12 @@
       "id": 34,
       "type": {
         "def": {
-          "sequence": {
-            "type": 33
-          }
-        }
-      }
-    },
-    {
-      "id": 35,
-      "type": {
-        "def": {
           "variant": {
             "variants": [
               {
                 "fields": [
                   {
-                    "type": 36
+                    "type": 35
                   }
                 ],
                 "index": 0,
@@ -2008,7 +2002,7 @@
         "params": [
           {
             "name": "T",
-            "type": 36
+            "type": 35
           },
           {
             "name": "E",
@@ -2021,7 +2015,7 @@
       }
     },
     {
-      "id": 36,
+      "id": 35,
       "type": {
         "def": {
           "variant": {
@@ -2029,7 +2023,7 @@
               {
                 "fields": [
                   {
-                    "type": 37
+                    "type": 36
                   }
                 ],
                 "index": 0,
@@ -2050,7 +2044,7 @@
         "params": [
           {
             "name": "T",
-            "type": 37
+            "type": 36
           },
           {
             "name": "E",
@@ -2063,7 +2057,7 @@
       }
     },
     {
-      "id": 37,
+      "id": 36,
       "type": {
         "def": {
           "primitive": "bool"
@@ -2071,7 +2065,7 @@
       }
     },
     {
-      "id": 38,
+      "id": 37,
       "type": {
         "def": {
           "composite": {
@@ -2091,7 +2085,7 @@
       }
     },
     {
-      "id": 39,
+      "id": 38,
       "type": {
         "def": {
           "primitive": "u64"
@@ -2099,7 +2093,7 @@
       }
     },
     {
-      "id": 40,
+      "id": 39,
       "type": {
         "def": {
           "variant": {}

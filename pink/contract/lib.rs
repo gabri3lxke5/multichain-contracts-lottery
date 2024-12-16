@@ -6,7 +6,6 @@ extern crate core;
 #[ink::contract(env = pink_extension::PinkEnvironment)]
 mod lotto_draw_multichain {
     use alloc::boxed::Box;
-    use alloc::vec;
     use alloc::vec::Vec;
     use ink::prelude::string::String;
     use ink::storage::Mapping;
@@ -293,7 +292,7 @@ mod lotto_draw_multichain {
             let encoded_input = input.encode();
             let mut hash_encoded_input = <hash::Blake2x256 as hash::HashOutput>::Type::default();
             ink::env::hash_bytes::<hash::Blake2x256>(&encoded_input, &mut hash_encoded_input);
-            hash_encoded_input.into()
+            hash_encoded_input
         }
 
         fn handle_request(
@@ -346,16 +345,45 @@ mod lotto_draw_multichain {
                     };
                     (response, txs)
                 }
-                LottoManagerRequestMessage::DrawNumbers(draw_number, ref config) => {
+                LottoManagerRequestMessage::GenerateSalt(draw_number, ref contract_ids) => {
+                    let  (synchronized_contracts, txs) = self.inner_do_action(
+                        RequestForAction::GenerateSalt(draw_number),
+                        contract_ids,
+                    )?;
+                    let response = if synchronized_contracts.is_empty(){
+                        None
+                    } else {
+                        let indexer = Indexer::new(self.get_indexer_url())?;
+
+                        let mut contract_salts = Vec::new();
+
+                        for contract_id in synchronized_contracts {
+                            if let Ok(salt) = indexer.query_salt(draw_number, contract_id){
+                                contract_salts.push((contract_id, salt))
+                            }
+                        }
+                        if contract_salts.is_empty(){
+                            None
+                        } else {
+                            Some(LottoManagerResponseMessage::SaltGenerated(
+                                draw_number,
+                                contract_salts,
+                            ))
+                        }
+                    };
+                    (response, txs)
+                }
+                LottoManagerRequestMessage::DrawNumbers(draw_number, ref config, ref salt) => {
                     let numbers = self.inner_get_numbers(
                         manager_contract_id,
                         draw_number,
                         config.nb_numbers,
                         config.min_number,
                         config.max_number,
+                        salt.clone(),
                     )?;
                     // encode and hash the input for verification by the manager
-                    let hash = Self::hash_input(&config);
+                    let hash = Self::hash_input(&(config, salt));
                     (Some(LottoManagerResponseMessage::WinningNumbers(draw_number, numbers, hash)), Vec::new())
                 }
                 LottoManagerRequestMessage::CheckWinners(draw_number, ref numbers) => {
@@ -381,7 +409,7 @@ mod lotto_draw_multichain {
                         RequestForAction::SetResults(
                             draw_number,
                             numbers.to_vec(),
-                            winners.to_vec(),
+                            !winners.is_empty(),
                         ),
                         contract_ids,
                     )?;
@@ -418,11 +446,15 @@ mod lotto_draw_multichain {
                 }
                 RequestForAction::OpenRegistrations(draw_number) => (
                     Some(draw_number),
-                    Some(RaffleRegistrationStatus::RegistrationOpen),
+                    Some(RaffleRegistrationStatus::RegistrationsOpen),
                 ),
                 RequestForAction::CloseRegistrations(draw_number) => (
                     Some(draw_number),
-                    Some(RaffleRegistrationStatus::RegistrationClosed),
+                    Some(RaffleRegistrationStatus::RegistrationsClosed),
+                ),
+                RequestForAction::GenerateSalt(draw_number) => (
+                    Some(draw_number),
+                    Some(RaffleRegistrationStatus::SaltGenerated),
                 ),
                 RequestForAction::SetResults(draw_number, _, _) => (
                     Some(draw_number),
@@ -495,7 +527,7 @@ mod lotto_draw_multichain {
         pub fn verify_numbers(
             &self,
             draw_number: DrawNumber,
-            hashes: Vec<lotto_draw_logic::types::Hash>,
+            salt: Salt,
             nb_numbers: u8,
             smallest_number: Number,
             biggest_number: Number,
@@ -524,7 +556,7 @@ mod lotto_draw_multichain {
            }
 
             let draw = Draw::new(nb_numbers, smallest_number, biggest_number)?;
-            let result = draw.verify_numbers(contract_id, draw_number, hashes, numbers)?;
+            let result = draw.verify_numbers(contract_id, draw_number, salt, numbers)?;
             Ok(result)
         }
 
@@ -535,17 +567,14 @@ mod lotto_draw_multichain {
             nb_numbers: u8,
             smallest_number: Number,
             biggest_number: Number,
+            salt: Salt,
         ) -> Result<Vec<Number>> {
             info!(
-                "Draw number {draw_number} - Request received for draw {nb_numbers} numbers between {smallest_number} and {biggest_number}"
+                "Draw number {draw_number} - Request received for draw {nb_numbers} numbers between {smallest_number} and {biggest_number} - Salt: {salt:02x?}"
             );
 
-            let indexer = Indexer::new(self.get_indexer_url())?;
-            //let hashes = indexer.query_hashes(draw_number)?;
-            let hashes = vec![]; // TODO implement get hashes
-
             let draw = Draw::new(nb_numbers, smallest_number, biggest_number)?;
-            let result = draw.get_numbers(contract_id, draw_number, hashes)?;
+            let result = draw.get_numbers(contract_id, draw_number, salt)?;
             Ok(result)
         }
 
@@ -568,17 +597,27 @@ mod lotto_draw_multichain {
 
     #[cfg(test)]
     mod tests {
+        use std::convert::Into;
         use super::*;
 
         struct EnvVars {
             /// The RPC endpoint of the target blockchain
-            rpc: String,
-            pallet_id: u8,
-            call_id: u8,
+            substrate_rpc: String,
+            substrate_pallet_id: u8,
+            substrate_call_id: u8,
             /// The rollup anchor address on the target blockchain
             manager_contract_id: WasmContractId,
-            /// The rollup anchor address on the target blockchain
-            lotto_contract_id: WasmContractId,
+            /// Registration contract WASM
+            lotto_wasm_id: RegistrationContractId,
+            lotto_wasm_contract_id: WasmContractId,
+            /// Registration contract EVM 1
+            lotto_evm_1_id: Option<RegistrationContractId>,
+            lotto_evm_1_rpc: Option<String>,
+            lotto_evm_1_contract_id: Option<EvmContractId>,
+            /// Registration contract EVM 2
+            lotto_evm_2_id: Option<RegistrationContractId>,
+            lotto_evm_2_rpc: Option<String>,
+            lotto_evm_2_contract_id: Option<EvmContractId>,
             /// When we want to manually set the attestor key for signing the message (only dev purpose)
             attest_key: Option<Vec<u8>>,
             /// When we want to use meta tx
@@ -597,30 +636,55 @@ mod lotto_draw_multichain {
 
         fn config() -> EnvVars {
             dotenvy::dotenv().ok();
-            let rpc = get_env("RPC").unwrap();
-            let pallet_id: u8 = get_env("PALLET_ID").unwrap().parse().expect("u8 expected");
-            let call_id: u8 = get_env("CALL_ID").unwrap().parse().expect("u8 expected");
+            let substrate_rpc = get_env("SUBSTRATE_RPC").unwrap();
+            let substrate_pallet_id: u8 = get_env("SUBSTRATE_PALLET_ID").unwrap().parse().expect("u8 expected");
+            let substrate_call_id: u8 = get_env("SUBSTRATE_CALL_ID").unwrap().parse().expect("u8 expected");
             let manager_contract_id: WasmContractId =
                 hex::decode(get_env("MANAGER_CONTRACT_ID").unwrap())
                     .expect("hex decode failed")
                     .try_into()
                     .expect("incorrect length");
-            let lotto_contract_id: WasmContractId =
-                hex::decode(get_env("LOTTO_CONTRACT_ID").unwrap())
+            let lotto_wasm_id: RegistrationContractId = get_env("LOTTO_WASM_ID").unwrap().parse().expect("u8 expected");
+            let lotto_wasm_contract_id: WasmContractId =
+                hex::decode(get_env("LOTTO_WASM_CONTRACT_ID").unwrap())
                     .expect("hex decode failed")
                     .try_into()
                     .expect("incorrect length");
+
+            let lotto_evm_1_id: Option<RegistrationContractId> = get_env("LOTTO_EVM_1_ID").map(|s| s.parse().expect("u8 expected"));
+            let lotto_evm_1_rpc = get_env("LOTTO_EVM_1_RPC");
+            let lotto_evm_1_contract_id: Option<EvmContractId> = get_env("LOTTO_EVM_1_CONTRACT_ID")
+                .map(|s| hex::decode(s).expect("hex decode failed")
+                .try_into()
+                .expect("incorrect length")
+            );
+
+            let lotto_evm_2_id: Option<RegistrationContractId> = get_env("LOTTO_EVM_2_ID").map(|s| s.parse().expect("u8 expected"));
+            let lotto_evm_2_rpc = get_env("LOTTO_EVM_2_RPC");
+            let lotto_evm_2_contract_id: Option<EvmContractId> = get_env("LOTTO_EVM_2_CONTRACT_ID")
+                .map(|s| hex::decode(s).expect("hex decode failed")
+                    .try_into()
+                    .expect("incorrect length")
+                );
+
             let attest_key =
                 get_env("ATTEST_KEY").map(|s| hex::decode(s).expect("hex decode failed"));
             let sender_key =
                 get_env("SENDER_KEY").map(|s| hex::decode(s).expect("hex decode failed"));
 
             EnvVars {
-                rpc: rpc.to_string(),
-                pallet_id,
-                call_id,
-                manager_contract_id: manager_contract_id.into(),
-                lotto_contract_id: lotto_contract_id.into(),
+                substrate_rpc,
+                substrate_pallet_id,
+                substrate_call_id,
+                manager_contract_id,
+                lotto_wasm_id,
+                lotto_wasm_contract_id,
+                lotto_evm_1_id,
+                lotto_evm_1_rpc,
+                lotto_evm_1_contract_id,
+                lotto_evm_2_id,
+                lotto_evm_2_rpc,
+                lotto_evm_2_contract_id,
                 attest_key,
                 sender_key,
             }
@@ -628,11 +692,18 @@ mod lotto_draw_multichain {
 
         fn init_contract() -> Lotto {
             let EnvVars {
-                rpc,
-                pallet_id,
-                call_id,
+                substrate_rpc,
+                substrate_pallet_id,
+                substrate_call_id,
                 manager_contract_id,
-                lotto_contract_id,
+                lotto_wasm_id,
+                lotto_wasm_contract_id,
+                lotto_evm_1_id,
+                lotto_evm_1_rpc,
+                lotto_evm_1_contract_id,
+                lotto_evm_2_id,
+                lotto_evm_2_rpc,
+                lotto_evm_2_contract_id,
                 attest_key,
                 sender_key,
             } = config();
@@ -643,30 +714,37 @@ mod lotto_draw_multichain {
                 None => None,
             };
 
-            let manager_config = WasmContractConfig {
-                rpc: rpc.clone(),
-                pallet_id,
-                call_id,
-                contract_id: manager_contract_id.into(),
-                sender_key: sender_key.clone(),
-            };
-
-            let registration_contract_config_10 = WasmContractConfig {
-                rpc,
-                pallet_id,
-                call_id,
-                contract_id: lotto_contract_id.into(),
-                sender_key,
-            };
-
             lotto
-                .set_config_raffle_manager(Some(ContractConfig::Wasm(manager_config)))
+                .set_config_raffle_manager(Some(ContractConfig::Wasm(WasmContractConfig {
+                    rpc: substrate_rpc.clone(),
+                    pallet_id : substrate_pallet_id,
+                    call_id : substrate_call_id,
+                    contract_id: manager_contract_id.into(),
+                    sender_key: sender_key.clone(),
+                })))
                 .unwrap();
 
             lotto
                 .set_config_raffle_registrations(
-                    100,
-                    Some(ContractConfig::Wasm(registration_contract_config_10)),
+                    lotto_wasm_id,
+                    Some(ContractConfig::Wasm(WasmContractConfig {
+                        rpc: substrate_rpc.clone(),
+                        pallet_id : substrate_pallet_id,
+                        call_id : substrate_call_id,
+                        contract_id: lotto_wasm_contract_id,
+                        sender_key,
+                    })),
+                )
+                .unwrap();
+
+            lotto
+                .set_config_raffle_registrations(
+                    lotto_evm_1_id.unwrap(),
+                    Some(ContractConfig::Evm(EvmContractConfig {
+                        rpc: lotto_evm_1_rpc.unwrap(),
+                        contract_id: lotto_evm_1_contract_id.unwrap(),
+                        sender_key,
+                    }))
                 )
                 .unwrap();
 
@@ -675,7 +753,7 @@ mod lotto_draw_multichain {
             }
 
             lotto
-                .config_indexer("https://query.substrate.fi/lotto-subquery-shibuya".to_string())
+                .config_indexer("https://query.substrate.fi/lotto-multichain-subquery-testnet".to_string())
                 .unwrap();
 
             lotto
