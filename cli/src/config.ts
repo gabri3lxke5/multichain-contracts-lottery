@@ -1,7 +1,7 @@
-const lottoDrawAddress = '0x05768976f9f4bb60355ae65d55adf7ae19fa5e7a379dfe084a231a80850bdba7';
-const lottoManagerAddress = 'YuCwFXie1QX7pPyvL8dHYGCX6gpCPB4aWchzb2bSYSgdrvu';
-const shibuyaRegistrationContractAddress = 'ZkMmwcAsCuFPB13kfXH6aQiJYAfnQYC2qMiK5h1mGKsMX86';
-const moonbaseRegistrationContractAddress = '0x991926D5ca21EF2938B5BAffbf4EC24fB55e205e';
+const lottoDrawAddress = '0x5bf409916abe624388d2d3ae6419ac02e45c7ba4abae2ddf4ac14999dc89beed';
+const lottoManagerAddress = 'WSV8MsLfTrrcnaWuS1nFt3GftFhm4qFpdzyrWqveswzZnZG';
+const shibuyaRegistrationContractAddress = 'Zq467YUQMoiP3xVzut2r5bsp6r8BZd4vq1GDEgvUbBktjW7';
+const moonbaseRegistrationContractAddress = '0x16A4Adc12Bb8558A7b800fB7bF837Bdb3BdB161c';
 const minatoRegistrationContractAddress = '0xA8AE9c3F7bc784Ccd1E6013c59A233600C6dE90A';
 
 export interface RaffleConfig {
@@ -9,6 +9,7 @@ export interface RaffleConfig {
     readonly minNumber: number;
     readonly maxNumber: number;
     readonly numberOfBlocksForParticipation: number;
+    readonly minNumberSalts: number;
 }
 
 export interface WasmContractCallConfig {
@@ -91,6 +92,7 @@ class TestnetConfig implements Config {
         minNumber = 1;
         maxNumber = 50;
         numberOfBlocksForParticipation = 10; // 6s/block = 1 minutes
+        minNumberSalts = 2;
     };
     lottoManager = new class implements SmartContractConfig {
         address = lottoManagerAddress;
@@ -100,7 +102,8 @@ class TestnetConfig implements Config {
         wssRpc = 'wss://poc6.phala.network/ws';
         address = lottoDrawAddress;
     };
-    lottoRegistrations = [registrationContractShibuya, registrationContractMinato, registrationContractMoonbase];
+    lottoRegistrations = [registrationContractShibuya, registrationContractMoonbase];
+    //lottoRegistrations = [registrationContractShibuya, registrationContractMinato, registrationContractMoonbase];
     indexer = "https://query.substrate.fi/lotto-multichain-subquery-testnet";
 }
 
