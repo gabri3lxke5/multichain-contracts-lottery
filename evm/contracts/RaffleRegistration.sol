@@ -99,14 +99,14 @@ contract RaffleRegistration is Config, Ownable, AccessControl, PhatRollupAnchor 
 	}
 
 	// return true if the users can participate (ie register their numbers)
-	function can_participate() public view returns (bool){
+	function canParticipate() public view returns (bool){
 		return getStatus() == Status.RegistrationsOpen;
 	}
 
 	// participate, ie  register their numbers
 	function participate(uint[] memory _numbers) external {
 		// check is the user can participate
-		require(can_participate(), "Incorrect Status");
+		require(canParticipate(), "Incorrect Status");
 		// check if the numbers are correct
 		_checkNumbers(_numbers);
 

@@ -44,7 +44,7 @@ export interface RaffleRegistrationInterface extends Interface {
       | "DEFAULT_ADMIN_ROLE"
       | "DRAW_NUMBER"
       | "STATUS"
-      | "can_participate"
+      | "canParticipate"
       | "eip712Domain"
       | "getDrawNumber"
       | "getRoleAdmin"
@@ -105,7 +105,7 @@ export interface RaffleRegistrationInterface extends Interface {
   ): string;
   encodeFunctionData(functionFragment: "STATUS", values?: undefined): string;
   encodeFunctionData(
-    functionFragment: "can_participate",
+    functionFragment: "canParticipate",
     values?: undefined
   ): string;
   encodeFunctionData(
@@ -212,7 +212,7 @@ export interface RaffleRegistrationInterface extends Interface {
   ): Result;
   decodeFunctionResult(functionFragment: "STATUS", data: BytesLike): Result;
   decodeFunctionResult(
-    functionFragment: "can_participate",
+    functionFragment: "canParticipate",
     data: BytesLike
   ): Result;
   decodeFunctionResult(
@@ -589,7 +589,7 @@ export interface RaffleRegistration extends BaseContract {
 
   STATUS: TypedContractMethod<[], [string], "view">;
 
-  can_participate: TypedContractMethod<[], [boolean], "view">;
+  canParticipate: TypedContractMethod<[], [boolean], "view">;
 
   eip712Domain: TypedContractMethod<
     [],
@@ -732,7 +732,7 @@ export interface RaffleRegistration extends BaseContract {
     nameOrSignature: "STATUS"
   ): TypedContractMethod<[], [string], "view">;
   getFunction(
-    nameOrSignature: "can_participate"
+    nameOrSignature: "canParticipate"
   ): TypedContractMethod<[], [boolean], "view">;
   getFunction(
     nameOrSignature: "eip712Domain"
