@@ -5,7 +5,7 @@ use crate::error::RaffleDrawError::{self, *};
 use crate::types::*;
 use alloc::vec::Vec;
 use ink::prelude::{format, string::String};
-use pink_extension::{debug, http_post, info};
+use pink_extension::{debug, error, http_post, info};
 use scale::Encode;
 use serde::Deserialize;
 use serde_json_core;
@@ -124,20 +124,38 @@ impl Indexer {
                 .0;
 
         // add the winners
-        let mut winners = Vec::new();
+        let mut winners_substrate = Vec::new();
+        let mut winners_evm = Vec::new();
         for w in result.data.participations.nodes.iter() {
             // build the accountId from the string address
-            let account_id = sp_core::crypto::AccountId32::from_ss58check(w.accountId)
-                .or(Err(InvalidSs58Address))?;
-            let address_hex: [u8; 32] = scale::Encode::encode(&account_id)
-                .try_into()
-                .or(Err(InvalidKeyLength))?;
-            winners.push(address_hex); // TODO manage AccountId32 and AccountId20
+            match w.accountId.len() {
+                48 => { // accountId 32
+                    let account_id = sp_core::crypto::AccountId32::from_ss58check(w.accountId)
+                        .or(Err(InvalidSs58Address))?;
+                    let address_hex: AccountId32 = scale::Encode::encode(&account_id)
+                        .try_into()
+                        .or(Err(InvalidKeyLength))?;
+                    winners_substrate.push(address_hex);
+                }
+                42 => { // accountId 20
+                    // remove the prefix 0x
+                    let without_0x = w.accountId.get(2..).ok_or(InvalidKeyLength)?;
+                    let address_hex: AccountId20 = hex::decode(without_0x)
+                        .expect("hex decode failed")
+                        .try_into()
+                        .or(Err(InvalidKeyLength))?;
+                    winners_evm.push(address_hex);
+                }
+                _ => {
+                    error!("Not Supported address: {0:?}", w.accountId);
+                    return Err(InvalidKeyLength);
+                }
+            }
         }
 
-        info!("Winners: {winners:02x?}");
+        info!("Winners Substrate: {winners_substrate:02x?} - EVM: {winners_evm:02x?} ");
 
-        Ok((winners, Vec::new())) // TODO manage AccountId32 and AccountId20
+        Ok((winners_substrate, winners_evm))
     }
 
     pub fn query_salt(&self, draw_number: DrawNumber, registration_contract_id: RegistrationContractId) -> Result<Salt, RaffleDrawError> {
@@ -179,7 +197,6 @@ impl Indexer {
             // remove the prefix 0x
             let without_0x = node.closingHash.get(2..).ok_or(InvalidResponseBody)?;
             let salt = hex::decode(without_0x).expect("hex decode failed");
-            info!("Salt: {salt:02x?}");
             Ok(salt)
         } else {
             Err(NoSalt)
@@ -210,15 +227,29 @@ mod tests {
     }
 
     #[ink::test]
-    fn test_get_winners() {
+    fn test_get_winner_substrate() {
         pink_extension_runtime::mock_ext::mock_all_ext();
 
-        let draw_num = 2;
-        let numbers = vec![15, 1, 44, 28];
+        let draw_num = 1;
+        let numbers = vec![9, 14, 25, 37];
 
         let indexer = new_indexer();
         let winners = indexer.query_winners(draw_num, &numbers).unwrap();
-        ink::env::debug_println!("winners: {winners:?}");
+        assert_eq!(1, winners.0.len());
+        assert_eq!(0, winners.1.len());
+    }
+
+    #[ink::test]
+    fn test_get_winner_evm() {
+        pink_extension_runtime::mock_ext::mock_all_ext();
+
+        let draw_num = 3;
+        let numbers = vec![43, 27, 50, 2];
+
+        let indexer = new_indexer();
+        let winners = indexer.query_winners(draw_num, &numbers).unwrap();
+        assert_eq!(0, winners.0.len());
+        assert_eq!(1, winners.1.len());
     }
 
     #[ink::test]

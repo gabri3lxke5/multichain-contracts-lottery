@@ -1,6 +1,6 @@
 extern crate alloc;
 
-use crate::types::{AccountId32, DrawNumber, Hash, Number, RaffleConfig, RegistrationContractId, Salt};
+use crate::types::{AccountId20, AccountId32, DrawNumber, Hash, Number, RaffleConfig, RegistrationContractId, Salt};
 use alloc::vec::Vec;
 
 #[derive(scale::Encode, scale::Decode, Debug)]
@@ -35,7 +35,7 @@ pub enum LottoManagerRequestMessage {
     PropagateResults(
         DrawNumber,
         Vec<Number>,
-        Vec<AccountId32>,
+        bool,
         Vec<RegistrationContractId>,
     ),
 }
@@ -66,9 +66,10 @@ pub enum LottoManagerResponseMessage {
     WinningNumbers(DrawNumber, Vec<Number>, Hash),
     /// Return the list of winners
     /// arg1: draw number
-    /// arg2: winners
-    /// arg3: hash of winning numbers
-    Winners(DrawNumber, Vec<AccountId32>, Hash),
+    /// arg2: winners substrate
+    /// arg3: winners evm
+    /// arg4: hash of winning numbers
+    Winners(DrawNumber, Vec<AccountId32>, Vec<AccountId20>, Hash),
     /// The results are propagated to the given contract ids.
     /// arg1: draw number
     /// arg2: list of contracts where the results are propagated

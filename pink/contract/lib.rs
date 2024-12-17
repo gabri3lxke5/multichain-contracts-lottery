@@ -389,27 +389,21 @@ mod lotto_draw_multichain {
                 LottoManagerRequestMessage::CheckWinners(draw_number, ref numbers) => {
                     let indexer = Indexer::new(self.get_indexer_url())?;
                     let winners = indexer.query_winners(draw_number, numbers)?;
-                    /*.map(
-                        |(substrate_addresses, evm_addresses)| {
-                            LottoManagerResponseMessage::Winners(substrate_addresses, evm_addresses)
-                        },
-                    )?
-                    */
                     // encode and hash the input for verification by the manager
                     let hash = Self::hash_input(numbers);
-                    (Some(LottoManagerResponseMessage::Winners(draw_number, winners.0, hash)), Vec::new())
+                    (Some(LottoManagerResponseMessage::Winners(draw_number, winners.0, winners.1, hash)), Vec::new())
                 }
                 LottoManagerRequestMessage::PropagateResults(
                     draw_number,
                     ref numbers,
-                    ref winners,
+                    has_winner,
                     ref contract_ids,
                 ) => {
                     let  (synchronized_contracts, txs) = self.inner_do_action(
                         RequestForAction::SetResults(
                             draw_number,
                             numbers.to_vec(),
-                            !winners.is_empty(),
+                            has_winner,
                         ),
                         contract_ids,
                     )?;

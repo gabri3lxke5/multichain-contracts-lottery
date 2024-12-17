@@ -173,11 +173,10 @@ mod tests {
         let expected : Vec<u8> = hex::decode("04060000001004003100290010000000000000000000000000000000000000000000000000000000000000000000").expect("hex decode failed");
         assert_eq!(expected, encoded_response);
 
-        let winners = vec![];
-        let response = LottoManagerResponseMessage::Winners(draw_number, winners, hash);
+        let response = LottoManagerResponseMessage::Winners(draw_number, vec![], vec![], hash);
         let encoded_response = response.encode();
         let expected: Vec<u8> = hex::decode(
-            "0506000000000000000000000000000000000000000000000000000000000000000000000000",
+            "050600000000000000000000000000000000000000000000000000000000000000000000000000",
         )
         .expect("hex decode failed");
         assert_eq!(expected, encoded_response);
