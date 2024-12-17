@@ -1,13 +1,15 @@
 use crate::error::{RaffleError, RaffleError::*};
-use crate::{DrawNumber, Number, RegistrationContractId, Salt};
+use crate::{AccountId20, AccountId32, DrawNumber, Number, RegistrationContractId, Salt};
 use ink::prelude::vec::Vec;
 use ink::storage::Mapping;
-use openbrush::traits::{AccountId, Storage};
+use openbrush::traits::Storage;
 use phat_rollup_anchor_ink::traits::rollup_anchor::RollupAnchor;
 use scale::{Decode, Encode};
 
 const STATUS: u32 = ink::selector_id!("STATUS");
 const DRAW_NUMBER: u32 = ink::selector_id!("DRAW_NUMBER");
+
+pub type Winners = (Vec<AccountId32>, Vec<AccountId20>);
 
 #[derive(Default, Debug)]
 #[openbrush::storage_item]
@@ -17,7 +19,7 @@ pub struct Data {
     salts: Mapping<DrawNumber, Vec<(RegistrationContractId, Salt)>>,
     generated_salt: Mapping<DrawNumber, Salt>,
     results: Mapping<DrawNumber, Vec<Number>>,
-    winners: Mapping<DrawNumber, Vec<AccountId>>,
+    winners: Mapping<DrawNumber, Winners>,
     min_number_salts: u8,
 }
 
@@ -353,7 +355,7 @@ pub trait RaffleManager: Storage<Data> + RollupAnchor {
     }
 
     #[ink(message)]
-    fn get_winners(&self, draw_number: DrawNumber) -> Option<Vec<AccountId>> {
+    fn get_winners(&self, draw_number: DrawNumber) -> Option<Winners> {
         self.data::<Data>().winners.get(draw_number)
     }
 
@@ -417,7 +419,7 @@ pub trait RaffleManager: Storage<Data> + RollupAnchor {
     fn set_winners(
         &mut self,
         draw_number: DrawNumber,
-        winners: Vec<AccountId>,
+        winners: Winners,
     ) -> Result<(), RaffleError> {
         // check the raffle number
         if self.get_draw_number()? != draw_number {
@@ -433,7 +435,9 @@ pub trait RaffleManager: Storage<Data> + RollupAnchor {
             Some(_) => Err(ExistingWinners),
             None => {
                 // save the result
-                self.data::<Data>().winners.insert(draw_number, &winners);
+                if !winners.0.is_empty() || !winners.1.is_empty() {
+                    self.data::<Data>().winners.insert(draw_number, &winners);
+                }
                 // update the status
                 self.set_status(Status::DrawFinished);
                 Ok(())
@@ -653,7 +657,7 @@ mod tests {
             .open_registrations()
             .expect("Fail to open the registrations");
 
-        assert_eq!(contract.set_winners(1, vec![]), Err(IncorrectStatus));
+        assert_eq!(contract.set_winners(1, (vec![], vec![])), Err(IncorrectStatus));
 
         contract
             .close_registrations()
@@ -663,28 +667,90 @@ mod tests {
             .try_to_generate_salt()
             .expect("Fail to generate salt");
 
-        assert_eq!(contract.set_winners(1, vec![]), Err(IncorrectStatus));
+        assert_eq!(contract.set_winners(1, (vec![], vec![])), Err(IncorrectStatus));
 
         contract
             .set_results(1, vec![1, 2, 3, 4])
             .expect("Fail to save the results");
 
-        assert_eq!(contract.set_winners(0, vec![]), Err(IncorrectDrawNumber));
-        assert_eq!(contract.set_winners(2, vec![]), Err(IncorrectDrawNumber));
+        assert_eq!(contract.set_winners(0, (vec![], vec![])), Err(IncorrectDrawNumber));
+        assert_eq!(contract.set_winners(2, (vec![], vec![])), Err(IncorrectDrawNumber));
 
         assert_eq!(contract.get_status(), Ok(Status::WaitingWinner));
         assert_eq!(contract.get_draw_number(), Ok(1));
         contract
-            .set_winners(1, vec![])
+            .set_winners(1, (vec![], vec![]))
             .expect("Fail to save the winners");
 
         assert_eq!(contract.get_status(), Ok(Status::DrawFinished));
         assert_eq!(contract.get_draw_number(), Ok(1));
 
-        assert_eq!(contract.get_winners(1), Some(vec![]));
+        assert_eq!(contract.get_winners(1), None);
         assert_eq!(contract.get_results(0), None);
         assert_eq!(contract.get_results(2), None);
     }
+
+
+    #[ink::test]
+    fn test_set_winners_substrate() {
+        let mut contract = Contract::new();
+
+        contract.start(0).expect("Fail to start");
+        contract
+            .open_registrations()
+            .expect("Fail to open the registrations");
+        contract
+            .close_registrations()
+            .expect("Fail to close the registrations");
+        contract
+            .try_to_generate_salt()
+            .expect("Fail to generate salt");
+        contract
+            .set_results(1, vec![1, 2, 3, 4])
+            .expect("Fail to save the results");
+
+        let address_substrate_1 = [1;32];
+        let address_substrate_2 = [2;32];
+
+        contract
+            .set_winners(1, (vec![address_substrate_1, address_substrate_2], vec![]))
+            .expect("Fail to save the winners");
+
+        assert_eq!(contract.get_status(), Ok(Status::DrawFinished));
+        assert_eq!(contract.get_draw_number(), Ok(1));
+        assert_eq!(contract.get_winners(1), Some((vec![address_substrate_1, address_substrate_2], vec![])));
+    }
+
+
+    #[ink::test]
+    fn test_set_winners_evm() {
+        let mut contract = Contract::new();
+
+        contract.start(0).expect("Fail to start");
+        contract
+            .open_registrations()
+            .expect("Fail to open the registrations");
+        contract
+            .close_registrations()
+            .expect("Fail to close the registrations");
+        contract
+            .try_to_generate_salt()
+            .expect("Fail to generate salt");
+        contract
+            .set_results(1, vec![1, 2, 3, 4])
+            .expect("Fail to save the results");
+
+        let address_evm_1 = [1;20];
+
+        contract
+            .set_winners(1, (vec![], vec![address_evm_1]))
+            .expect("Fail to save the winners");
+
+        assert_eq!(contract.get_status(), Ok(Status::DrawFinished));
+        assert_eq!(contract.get_draw_number(), Ok(1));
+        assert_eq!(contract.get_winners(1), Some((vec![], vec![address_evm_1])));
+    }
+
 
     #[ink::test]
     fn test_reopen_after_results_and_winners() {
@@ -703,7 +769,7 @@ mod tests {
             .set_results(1, vec![1, 2, 3, 4])
             .expect("Fail to save the results");
         contract
-            .set_winners(1, vec![])
+            .set_winners(1, (vec![], vec![]))
             .expect("Fail to save the winners");
 
         contract
@@ -878,7 +944,7 @@ mod tests {
             .set_results(1, vec![1, 2, 3, 4])
             .expect("Fail to save the results");
         contract
-            .set_winners(1, vec![])
+            .set_winners(1, (vec![], vec![]))
             .expect("Fail to save the winners");
         contract
             .save_registration_contracts_status(1, Status::DrawFinished, vec![100, 101, 102])
@@ -928,7 +994,7 @@ mod tests {
             .set_results(2, vec![10, 35, 8, 10])
             .expect("Fail to save the results");
         contract
-            .set_winners(2, vec![])
+            .set_winners(2, (vec![], vec![]))
             .expect("Fail to save the winners");
         contract
             .save_registration_contracts_status(2, Status::DrawFinished, vec![100, 101, 102])
