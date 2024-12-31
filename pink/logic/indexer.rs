@@ -58,7 +58,7 @@ struct RaffleNodes<'a> {
 #[derive(Deserialize, Encode, Clone, Debug, PartialEq)]
 #[allow(non_snake_case)]
 struct RaffleNode<'a> {
-    closingHash: &'a str,
+    salt: &'a str,
 }
 
 pub struct Indexer {
@@ -173,7 +173,7 @@ impl Indexer {
 
         // build the body
         let body = format!(
-            r#"{{"query" : "{{raffles({}){{ nodes {{ closingHash }} }} }}"}}"#,
+            r#"{{"query" : "{{raffles({}){{ nodes {{ salt }} }} }}"}}"#,
             filter
         );
 
@@ -195,7 +195,7 @@ impl Indexer {
 
         if let Some(node) = result.data.raffles.nodes.iter().next() {
             // remove the prefix 0x
-            let without_0x = node.closingHash.get(2..).ok_or(InvalidResponseBody)?;
+            let without_0x = node.salt.get(2..).ok_or(InvalidResponseBody)?;
             let salt = hex::decode(without_0x).expect("hex decode failed");
             Ok(salt)
         } else {
