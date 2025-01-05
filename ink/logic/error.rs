@@ -8,6 +8,7 @@ pub enum RaffleError {
     DifferentConfig,
     IncorrectNbNumbers,
     IncorrectNumbers,
+    ExistingSalt,
     DifferentResults,
     ExistingResults,
     ExistingWinners,

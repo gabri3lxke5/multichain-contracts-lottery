@@ -33,13 +33,43 @@ task("balances", "Prints the balance for all accounts", async (_taskArgs, hre) =
 
 });
 
+task("cancel", "Cancel pending transactions", async (_taskArgs, hre) => {
+  const accounts = await hre.ethers.getSigners();
+
+  const owner = accounts[0];
+  const tx = {
+    nonce: 107,
+    to: owner.address,
+    value: 0,
+    //gaslimit: 58000;
+    gasPrice: hre.ethers.parseUnits('50', 'gwei')
+  }
+  await owner.sendTransaction(tx);
+
+});
+
 
 const config: HardhatUserConfig = {
-  solidity: "0.8.24", // replace if necessary
+  solidity: {
+    version:  "0.8.24",
+  },
+  ignition: {
+    disableFeeBumping: false,
+    maxFeeBumps: 10,
+    timeBeforeBumpingFees: 1 * 60 * 1_000, // 1 minutes
+    requiredConfirmations: 5,
+  },
   networks: {
     'minato': {
       url: 'https://rpc.minato.soneium.org',
-      accounts: [MINATO_OWNER_PRIVATE_KEY, MINATO_EVM_ATTESTOR_PK, MINATO_USER1_PRIVATE_KEY, MINATO_USER2_PRIVATE_KEY]
+      accounts: [MINATO_OWNER_PRIVATE_KEY, MINATO_EVM_ATTESTOR_PK, MINATO_USER1_PRIVATE_KEY, MINATO_USER2_PRIVATE_KEY],
+      /*
+      ignition: {
+        maxFeePerGasLimit: 500_000_000_000n, // 500 gwei
+        maxPriorityFeePerGas: 2_000_000_000n, // 2 gwei
+        disableFeeBumping: false,
+      }
+       */
     },
     'moonbase': {
       url: 'https://rpc.api.moonbase.moonbeam.network',

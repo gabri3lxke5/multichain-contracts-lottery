@@ -92,4 +92,14 @@ export class RaffleRegistrationWasm {
         return await query(this.contract, 'accessControl::hasRole', attestorRole, attestor);
     }
 
+    public async canParticipate() : Promise<Boolean> {
+        return await query(this.contract, 'raffle::canParticipate');
+    }
+
+    public async participate(numbers: Number[]) : Promise<void> {
+        console.log('Raffle Registration %s - Participate %s', this.config.registrationContractId, numbers);
+        const signer = this.getSigner();
+        return await tx(this.contract, signer, 'participate', numbers);
+    }
+
 }

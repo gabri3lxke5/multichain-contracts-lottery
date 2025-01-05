@@ -6,8 +6,9 @@ pub mod lotto_registration_manager_contract {
     use ink::codegen::{EmitEvent, Env};
     use ink::prelude::vec::Vec;
     use lotto::{
-        config, config::*, error::*, raffle_manager, raffle_manager::*, DrawNumber, Number,
-        RegistrationContractId,
+        config, config::*, error::*, raffle_manager, raffle_manager::*,
+        AccountId20, AccountId32, DrawNumber, Number,
+        RegistrationContractId, Salt,
     };
     use openbrush::contracts::access_control::*;
     use openbrush::contracts::ownable::*;
@@ -52,7 +53,7 @@ pub mod lotto_registration_manager_contract {
     pub struct WinnersRevealed {
         #[ink(topic)]
         draw_number: DrawNumber,
-        winners: Vec<AccountId>,
+        winners: Winners,
     }
 
     /// Event emitted when the lotto is closed
@@ -68,6 +69,8 @@ pub mod lotto_registration_manager_contract {
         RollupAnchorError(RollupAnchorError),
         CannotBeClosedYet,
         NoResult,
+        SaltCannotBeGenerated,
+        SaltNotGenerated,
         IncorrectInputHash,
         TransferError,
     }
@@ -111,15 +114,17 @@ pub mod lotto_registration_manager_contract {
         OpenRegistrations(DrawNumber, Vec<RegistrationContractId>),
         /// request to close the registrations to all given contracts
         CloseRegistrations(DrawNumber, Vec<RegistrationContractId>),
-        /// request to draw the numbers based on the config
-        DrawNumbers(DrawNumber, Config),
+        /// request to generate a salt by all given contracts
+        GenerateSalt(DrawNumber, Vec<RegistrationContractId>),
+        /// request to draw the numbers based on the config and the given salt
+        DrawNumbers(DrawNumber, Config, Salt),
         /// request to check if there is a winner for the given numbers
         CheckWinners(DrawNumber, Vec<Number>),
         /// request to propagate the results to all given contracts
         PropagateResults(
             DrawNumber,
             Vec<Number>,
-            Vec<AccountId>,
+            bool,
             Vec<RegistrationContractId>,
         ),
     }
@@ -139,6 +144,10 @@ pub mod lotto_registration_manager_contract {
         /// arg1: draw number
         /// arg2: list of contracts where the registration is closed
         RegistrationsClosed(DrawNumber, Vec<RegistrationContractId>),
+        /// The salt is generated for the given contract ids.
+        /// arg1: draw number
+        /// arg2: list of contracts where the salt is generated
+        SaltGenerated(DrawNumber, Vec<(RegistrationContractId, Salt)>),
         /// Return the winning numbers
         /// arg1: draw number
         /// arg2: winning numbers
@@ -146,9 +155,10 @@ pub mod lotto_registration_manager_contract {
         WinningNumbers(DrawNumber, Vec<Number>, Hash),
         /// Return the list of winners
         /// arg1: draw number
-        /// arg2: winners
-        /// arg3: hash of winning numbers
-        Winners(DrawNumber, Vec<AccountId>, Hash),
+        /// arg2: winners substrate
+        /// arg3: winners evm
+        /// arg4: hash of winning numbers
+        Winners(DrawNumber, Vec<AccountId32>, Vec<AccountId20>, Hash),
         /// The results are propagated to the given contract ids.
         /// arg1: draw number
         /// arg2: list of contracts where the results are propagated
@@ -222,6 +232,17 @@ pub mod lotto_registration_manager_contract {
         ) -> Result<(), ContractError> {
             // add registration contract
             RaffleManager::set_registration_contracts(self, registration_contracts)?;
+            Ok(())
+        }
+
+        #[ink(message)]
+        #[openbrush::modifiers(access_control::only_role(LOTTO_MANAGER_ROLE))]
+        pub fn set_min_number_salts(
+            &mut self,
+            min_number_salts: u8,
+        ) -> Result<(), ContractError> {
+            // set the minimum number of salts
+            RaffleManager::set_min_number_salts(self, min_number_salts)?;
             Ok(())
         }
 
@@ -411,11 +432,56 @@ pub mod lotto_registration_manager_contract {
                 return Ok(());
             }
 
-            // if all contracts are synchronized, we can request the draw numbers
-            let config = RaffleConfig::ensure_config(self)?;
-            // TODO get the hash when the registration is closed
-            let message = LottoManagerRequestMessage::DrawNumbers(draw_number, config);
-            RollupAnchor::push_message(self, &message)?;
+            // if all contracts are synchronized, we can start the draw - generate salt in first
+            self.inner_try_to_generate_salt(draw_number)?;
+
+            Ok(())
+        }
+
+        fn inner_try_to_generate_salt(
+            &mut self,
+            draw_number: DrawNumber,
+        ) -> Result<(), ContractError> {
+            // generate the salt in the manager
+            match RaffleManager::try_to_generate_salt(self)? {
+                (None, missing_contracts) => {
+                    // the salt is not generated
+                    if missing_contracts.is_empty() {
+                        // no missing contract => error
+                        return Err(ContractError::SaltCannotBeGenerated) ;//
+                    }
+                    // synchronized missing contracts and wait
+                    let message = LottoManagerRequestMessage::GenerateSalt(
+                        draw_number,
+                        missing_contracts,
+                    );
+                    RollupAnchor::push_message(self, &message)?;
+                    Ok(())
+                }
+                (Some(salt), _) => {
+                    // the salt is generated, request the draw numbers
+                    let config = RaffleConfig::ensure_config(self)?;
+                    let message = LottoManagerRequestMessage::DrawNumbers(draw_number, config, salt);
+                    RollupAnchor::push_message(self, &message)?;
+                    Ok(())
+                }
+            }
+        }
+
+
+        fn handle_salt_generated(
+            &mut self,
+            draw_number: DrawNumber,
+            contracts_salts: Vec<(RegistrationContractId, Salt)>,
+        ) -> Result<(), ContractError> {
+
+            RaffleManager::save_salts(
+                self,
+                draw_number,
+                contracts_salts
+            )?;
+
+            self.inner_try_to_generate_salt(draw_number)?;
 
             Ok(())
         }
@@ -429,7 +495,10 @@ pub mod lotto_registration_manager_contract {
 
             // check the config used is correct
             let config = RaffleConfig::ensure_config(self)?;
-            verify_hash(&config, config_hash)?;
+            // check the salt used by the VRF
+            let generated_salt = RaffleManager::get_generated_salt(self, draw_number).ok_or(ContractError::SaltNotGenerated)?;
+            // check the config and salt used are correct
+            verify_hash(&(config, generated_salt), config_hash)?;
 
             // check if the numbers are correct
             RaffleConfig::check_numbers(self, &numbers)?;
@@ -457,7 +526,8 @@ pub mod lotto_registration_manager_contract {
         fn handle_winners(
             &mut self,
             draw_number: DrawNumber,
-            winners: Vec<AccountId>,
+            winners_substrate: Vec<AccountId32>,
+            winners_evm: Vec<AccountId20>,
             results_hash: &[u8],
         ) -> Result<(), ContractError> {
 
@@ -466,12 +536,12 @@ pub mod lotto_registration_manager_contract {
             verify_hash(&results, results_hash)?;
 
             // set the winners in the raffle
-            RaffleManager::set_winners(self, draw_number, winners.clone())?;
+            RaffleManager::set_winners(self, draw_number, (winners_substrate.clone(), winners_evm.clone()))?;
 
             // emmit the event
             self.env().emit_event(WinnersRevealed {
                 draw_number,
-                winners: winners.clone(),
+                winners: (winners_substrate.clone(), winners_evm.clone()),
             });
 
             // propagate the results in all contracts
@@ -481,7 +551,7 @@ pub mod lotto_registration_manager_contract {
             let message = LottoManagerRequestMessage::PropagateResults(
                 draw_number,
                 numbers,
-                winners.clone(),
+                !winners_substrate.is_empty() || !winners_evm.is_empty(),
                 registration_contracts,
             );
             RollupAnchor::push_message(self, &message)?;
@@ -503,11 +573,15 @@ pub mod lotto_registration_manager_contract {
             let not_synchronized_contracts = RaffleManager::save_registration_contracts_status(
                 self,
                 draw_number,
-                Status::Closed,
+                Status::DrawFinished,
                 registration_contracts,
             )?;
 
-            let winners = RaffleManager::get_winners(self, draw_number).unwrap_or_default();
+            let has_winner = if let Some(winners) = RaffleManager::get_winners(self, draw_number) {
+                !winners.0.is_empty() || !winners.1.is_empty()
+            } else {
+                false
+            };
 
             if !not_synchronized_contracts.is_empty() {
                 // synchronized missing contracts and wait
@@ -516,15 +590,15 @@ pub mod lotto_registration_manager_contract {
                 let message = LottoManagerRequestMessage::PropagateResults(
                     draw_number,
                     numbers,
-                    winners.clone(),
+                    has_winner,
                     not_synchronized_contracts,
                 );
                 RollupAnchor::push_message(self, &message)?;
                 return Ok(());
             }
 
-            // if all contracts are synchronized, we can request the draw numbers
-            if winners.is_empty() {
+            // if all contracts are synchronized, we can continue
+            if !has_winner {
                 // if there is no winner, we can open the registrations for the next draw number
                 self.inner_open_registrations()?;
             }
@@ -580,9 +654,7 @@ pub mod lotto_registration_manager_contract {
         let mut hash_encoded_input = <hash::Blake2x256 as hash::HashOutput>::Type::default();
         ink::env::hash_bytes::<hash::Blake2x256>(&encoded_input_data, &mut hash_encoded_input);
 
-
         ink::env::debug_println!("hash_encoded_input: {hash_encoded_input:02x?}");
-
         if hash_encoded_input != *expected_hash {
             return Err(ContractError::IncorrectInputHash);
         }
@@ -605,6 +677,9 @@ pub mod lotto_registration_manager_contract {
                 LottoManagerResponseMessage::RegistrationsClosed(draw_number, contract_ids) => {
                     self.handle_registrations_closed(draw_number, contract_ids)?
                 }
+                LottoManagerResponseMessage::SaltGenerated(draw_number, contracts_salts) => {
+                    self.handle_salt_generated(draw_number, contracts_salts)?
+                }
                 LottoManagerResponseMessage::ResultsPropagated(
                     draw_number,
                     contract_ids,
@@ -613,8 +688,8 @@ pub mod lotto_registration_manager_contract {
                 LottoManagerResponseMessage::WinningNumbers(draw_number, numbers, ref hash) => {
                     self.handle_winning_numbers(draw_number, numbers, hash.as_ref())?
                 }
-                LottoManagerResponseMessage::Winners(draw_number, winners, ref hash) => {
-                    self.handle_winners(draw_number, winners, hash.as_ref())?
+                LottoManagerResponseMessage::Winners(draw_number, winners_substrate, winners_evm , ref hash) => {
+                    self.handle_winners(draw_number, winners_substrate, winners_evm, hash.as_ref())?
                 }
                 LottoManagerResponseMessage::CloseRegistrations() => {
                     if self.can_close_registrations() {
@@ -674,10 +749,34 @@ pub mod lotto_registration_manager_contract {
         }
 
         #[ink::test]
+        fn test_verify_config_salt_hash() {
+            let config = Config {
+                nb_numbers: 4,
+                min_number: 1,
+                max_number: 50,
+            };
+
+            let salt : Salt = [101, 183, 131, 128, 194, 210, 6, 186, 135, 158, 6, 247, 69, 144, 120, 98, 45, 169, 95, 8, 91, 222, 225, 175, 72, 14, 187, 148, 7, 210, 251, 70].to_vec();
+            let hash: Vec<u8> = hex::decode("94e1fa775bc259340a60dda2a2f10e911b6343e6ab0932726c738097c8fc3521").expect("hex decode failed");
+            assert_eq!(verify_hash(&(config, salt), &hash), Ok(()));
+
+            let salt : Salt = [94, 193, 212, 179, 22, 80, 18, 236, 194, 56, 99, 20, 16, 125, 123, 20, 14, 26, 212, 42, 96, 187, 51, 110, 129, 113, 120, 162, 223, 50, 36, 79].to_vec();
+            let hash: Vec<u8> = hex::decode("c6aac4e20883f260241bbae6963be7ae78d9cc0136f0a2409aa40e0fdef11cb1").expect("hex decode failed");
+            assert_eq!(verify_hash(&(config, salt), &hash), Ok(()));
+
+        }
+
+        #[ink::test]
         fn test_verify_numbers_hash() {
+
             let numbers: Vec<Number> = vec![5, 40, 8, 2];
             let hash: Vec<u8> = hex::decode("0c70b0cb9b2d87768d1efacd6ca6a89be08a4c8c70855b54455f7f46caeeb155").expect("hex decode failed");
             assert_eq!(verify_hash(&numbers, &hash), Ok(()));
+
+            let numbers: Vec<Number> = vec![15, 20, 1, 31];
+            let hash: Vec<u8> = hex::decode("2a8b8764a606b81095017886e6e46482bf2f248969279ea3c063265b060794ae").expect("hex decode failed");
+            assert_eq!(verify_hash(&numbers, &hash), Ok(()));
+
         }
 
     }

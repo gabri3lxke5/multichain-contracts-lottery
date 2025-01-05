@@ -12,7 +12,7 @@ import "./PhatRollupAnchor.sol";
 contract RaffleRegistration is Config, Ownable, AccessControl, PhatRollupAnchor {
 
 	// workflow status
-	enum Status { NotStarted, Started, RegistrationsOpen, RegistrationsClosed, ResultsReceived }
+	enum Status { NotStarted, Started, RegistrationsOpen, RegistrationsClosed, SaltGenerated, ResultsReceived }
 
 	// Event emitted when the workflow starts
 	event Started(uint indexed registrationContractId);
@@ -23,8 +23,11 @@ contract RaffleRegistration is Config, Ownable, AccessControl, PhatRollupAnchor 
 	// Event emitted when the registrations are closed
 	event RegistrationsClosed(uint indexed registrationContractId, uint indexed drawNumber);
 
+	// Event emitted when the salt is generated
+	event SaltGenerated(uint indexed registrationContractId, uint indexed drawNumber);
+
 	// Event emitted when the results are received
-	event ResultsReceived(uint indexed registrationContractId, uint indexed drawNumber, uint[] numbers, address[] winners);
+	event ResultsReceived(uint indexed registrationContractId, uint indexed drawNumber, uint[] numbers, bool hasWinner);
 
 	// Event emitted when the participation is registered
 	event ParticipationRegistered(uint indexed registrationContractId, uint indexed drawNumber, address indexed participant, uint[] numbers);
@@ -50,7 +53,7 @@ contract RaffleRegistration is Config, Ownable, AccessControl, PhatRollupAnchor 
 		emit Started(registrationContractId);
 	}
 
-	function _open_registrations(uint _drawNumber) private {
+	function _openRegistrations(uint _drawNumber) private {
 		// check the status
 		Status status = getStatus();
 		require(status == Status.Started || status == Status.ResultsReceived, "Incorrect Status");
@@ -61,7 +64,7 @@ contract RaffleRegistration is Config, Ownable, AccessControl, PhatRollupAnchor 
 		emit RegistrationsOpen(registrationContractId, _drawNumber);
 	}
 
-	function _close_registrations(uint _drawNumber) private {
+	function _closeRegistrations(uint _drawNumber) private {
 		// check the status
 		require(getStatus() == Status.RegistrationsOpen, "Incorrect Status");
 		// check the draw number
@@ -72,29 +75,38 @@ contract RaffleRegistration is Config, Ownable, AccessControl, PhatRollupAnchor 
 		emit RegistrationsClosed(registrationContractId, _drawNumber);
 	}
 
-	function _saveResults(uint _drawNumber, uint[] memory _numbers, address[] memory _winners) private {
+	function _generateSalt(uint _drawNumber) private {
 		// check the status
 		require(getStatus() == Status.RegistrationsClosed, "Incorrect Status");
 		// check the draw number
 		require(getDrawNumber() == _drawNumber, "Incorrect Draw Number");
-		// save the results
-		//results[_drawNumber] = _numbers;
-		//winners[_drawNumber] = _winners;
+		// update the status
+		_setStatus(Status.SaltGenerated);
+		// emit the event
+		emit SaltGenerated(registrationContractId, _drawNumber);
+	}
+
+	function _saveResults(uint _drawNumber, uint[] memory _numbers, bool _hasWinner) private {
+		// check the status
+		Status status = getStatus();
+		require(status == Status.RegistrationsClosed || status == Status.SaltGenerated, "Incorrect Status");
+		// check the draw number
+		require(getDrawNumber() == _drawNumber, "Incorrect Draw Number");
 		// update the status
 		_setStatus(Status.ResultsReceived);
 		// emit the event
-		emit ResultsReceived(registrationContractId, _drawNumber, _numbers, _winners);
+		emit ResultsReceived(registrationContractId, _drawNumber, _numbers, _hasWinner);
 	}
 
 	// return true if the users can participate (ie register their numbers)
-	function can_participate() public view returns (bool){
+	function canParticipate() public view returns (bool){
 		return getStatus() == Status.RegistrationsOpen;
 	}
 
 	// participate, ie  register their numbers
 	function participate(uint[] memory _numbers) external {
 		// check is the user can participate
-		require(can_participate(), "Incorrect Status");
+		require(canParticipate(), "Incorrect Status");
 		// check if the numbers are correct
 		_checkNumbers(_numbers);
 
@@ -134,7 +146,7 @@ contract RaffleRegistration is Config, Ownable, AccessControl, PhatRollupAnchor 
 		grantRole(PhatRollupAnchor.ATTESTOR_ROLE, _attestor);
 	}
 
-	enum RequestType {SET_CONFIG_AND_START, OPEN_REGISTRATIONS, CLOSE_REGISTRATIONS, SET_RESULTS}
+	enum RequestType {SET_CONFIG_AND_START, OPEN_REGISTRATIONS, CLOSE_REGISTRATIONS, GENERATE_SALT, SET_RESULTS}
 
 	function _onMessageReceived(bytes calldata _action) internal override {
 
@@ -144,6 +156,7 @@ contract RaffleRegistration is Config, Ownable, AccessControl, PhatRollupAnchor 
 			_requestType == RequestType.SET_CONFIG_AND_START
 		||  _requestType == RequestType.OPEN_REGISTRATIONS
 		||  _requestType == RequestType.CLOSE_REGISTRATIONS
+			||  _requestType == RequestType.GENERATE_SALT
 		||  _requestType == RequestType.SET_RESULTS,
 		"cannot parse action");
 
@@ -157,17 +170,21 @@ contract RaffleRegistration is Config, Ownable, AccessControl, PhatRollupAnchor 
 
 			(uint _drawNumber) = abi.decode(_request, (uint));
 			// open the registrations
-			_open_registrations(_drawNumber);
+			_openRegistrations(_drawNumber);
 		} else if (_requestType == RequestType.CLOSE_REGISTRATIONS){
 			(uint _drawNumber) = abi.decode(_request, (uint));
 			// close the registrations
-			_close_registrations(_drawNumber);
+			_closeRegistrations(_drawNumber);
+		} else if (_requestType == RequestType.GENERATE_SALT){
+			(uint _drawNumber) = abi.decode(_request, (uint));
+			// close the registrations
+			_generateSalt(_drawNumber);
 		} else if (_requestType == RequestType.SET_RESULTS){
-			(uint _drawNumber, uint[] memory _numbers, address[] memory _winners) = abi.decode(_request, (uint, uint[], address[]));
+			(uint _drawNumber, uint[] memory _numbers, bool _hasWinner) = abi.decode(_request, (uint, uint[], bool));
 			// check if the numbers satisfies the config
 			_checkNumbers(_numbers);
 			// set the results
-			_saveResults(_drawNumber, _numbers, _winners);
+			_saveResults(_drawNumber, _numbers, _hasWinner);
 		}
 
 	}

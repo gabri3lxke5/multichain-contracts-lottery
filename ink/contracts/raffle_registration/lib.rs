@@ -46,6 +46,15 @@ pub mod lotto_registration_contract {
         draw_number: DrawNumber,
     }
 
+    /// Event emitted when the salt is generated
+    #[ink(event)]
+    pub struct SaltGenerated {
+        #[ink(topic)]
+        registration_contract_id: RegistrationContractId,
+        #[ink(topic)]
+        draw_number: DrawNumber,
+    }
+
     /// Event emitted when the results are received
     #[ink(event)]
     pub struct ResultsReceived {
@@ -54,7 +63,7 @@ pub mod lotto_registration_contract {
         #[ink(topic)]
         draw_number: DrawNumber,
         numbers: Vec<Number>,
-        winners: Vec<AccountId>,
+        has_winner: bool,
     }
 
     /// Event emitted when the participation is registered
@@ -118,8 +127,10 @@ pub mod lotto_registration_contract {
         OpenRegistrations(DrawNumber),
         /// close the registrations for the given draw number
         CloseRegistrations(DrawNumber),
-        /// set the results (winning numbers and winner addresses) for the given draw number
-        SetResults(DrawNumber, Vec<Number>, Vec<AccountId>),
+        /// generate the salt used by VRF
+        GenerateSalt(DrawNumber),
+        /// set the results (winning numbers + true or false if we have a winner) for the given draw number
+        SetResults(DrawNumber, Vec<Number>, bool),
     }
 
     // Contract storage
@@ -260,17 +271,34 @@ pub mod lotto_registration_contract {
             Ok(())
         }
 
+        fn inner_generate_salt(
+            &mut self,
+            draw_number: DrawNumber,
+        ) -> Result<(), ContractError> {
+            // Generate the salt
+            Raffle::generate_salt(self, draw_number)?;
+
+            // emit the event
+            let registration_contract_id = self.registration_contract_id;
+            self.env().emit_event(SaltGenerated {
+                registration_contract_id,
+                draw_number,
+            });
+
+            Ok(())
+        }
+
         fn inner_set_results(
             &mut self,
             draw_number: DrawNumber,
             numbers: Vec<Number>,
-            winners: Vec<AccountId>,
+            has_winner: bool,
         ) -> Result<(), ContractError> {
             // check if the numbers satisfies the config
             RaffleConfig::check_numbers(self, &numbers)?;
 
             // save the results
-            Raffle::save_results(self, draw_number, numbers.clone(), winners.clone())?;
+            Raffle::save_results(self, draw_number, numbers.clone(), has_winner)?;
 
             // emmit the event
             let registration_contract_id = self.registration_contract_id;
@@ -278,7 +306,7 @@ pub mod lotto_registration_contract {
                 registration_contract_id,
                 draw_number,
                 numbers: numbers.clone(),
-                winners: winners.clone(),
+                has_winner,
             });
 
             Ok(())
@@ -332,8 +360,11 @@ pub mod lotto_registration_contract {
                 RequestForAction::CloseRegistrations(draw_number) => {
                     self.inner_close_registrations(draw_number)?;
                 }
-                RequestForAction::SetResults(draw_number, numbers, winners) => {
-                    self.inner_set_results(draw_number, numbers, winners)?
+                RequestForAction::GenerateSalt(draw_number) => {
+                    self.inner_generate_salt(draw_number)?;
+                }
+                RequestForAction::SetResults(draw_number, numbers, has_winner) => {
+                    self.inner_set_results(draw_number, numbers, has_winner)?
                 }
             }
 

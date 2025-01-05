@@ -5,6 +5,7 @@ import {Contract} from "ethers/lib.commonjs/contract/contract";
 import {abi} from "../abi/RaffleRegistration.json";
 import {seed_evm} from "./seed";
 import {readFileSync} from "fs";
+import {query, tx} from "./wasmContractHelper";
 
 export class RaffleRegistrationEvm {
 
@@ -85,4 +86,19 @@ export class RaffleRegistrationEvm {
         const attestorRole = ethers.keccak256(ethers.toUtf8Bytes("ATTESTOR_ROLE"));
         return await this.contract.hasRole(attestorRole, attestor);
     }
+
+    public async canParticipate() : Promise<Boolean> {
+        return await this.contract.canParticipate();
+    }
+
+    public async participate(numbers: Number[]) : Promise<void> {
+        console.log('Raffle Registration %s - Participate %s', this.config.registrationContractId, numbers);
+
+        const provider = await getProvider((this.config.contractConfig.call as EvmContractCallConfig).rpc);
+        const signer = new ethers.Wallet(seed_evm, provider);
+
+        const tx = await this.contract.connect(signer).participate(numbers);
+        await tx.wait();
+    }
+
 }

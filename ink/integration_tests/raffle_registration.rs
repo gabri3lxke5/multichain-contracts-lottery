@@ -153,7 +153,7 @@ async fn attestor_set_results(
     numbers: Vec<Number>,
     winners: Vec<AccountId>,
 ) {
-    let payload = RequestForAction::SetResults(draw_number, numbers.clone(), winners.clone());
+    let payload = RequestForAction::SetResults(draw_number, numbers.clone(), winners.len() > 0);
 
     let actions = vec![HandleActionInput::Reply(payload.encode())];
     let rollup_cond_eq =
