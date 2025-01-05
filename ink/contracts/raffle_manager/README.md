@@ -1,5 +1,7 @@
 # Lotto Manager contract
 
+## Build
+
 ```shell
 cargo contract build
 ```
@@ -12,7 +14,4 @@ cargo test
 
 ## Integration tests
 
-```shell
-cd ../../integration_tests
-cargo test --features=e2e-tests
-```
+Go [here](../../integration_tests/README.md) to run the integration tests 
