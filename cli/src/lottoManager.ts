@@ -94,6 +94,8 @@ export class RaffleManager {
         await tx(this.contract, this.signer, 'setConfig', params);
 
         await tx(this.contract, this.signer, 'setNumberOfBlocksForParticipation', config.numberOfBlocksForParticipation);
+
+        await tx(this.contract, this.signer, 'setMinNumberSalts', config.minNumberSalts);
     }
 
     public async registerAttestor(attestor: string) : Promise<void> {

@@ -17,6 +17,7 @@ pub enum RaffleDrawError {
     FailedToDecodeStatus,
     // error when checking the winners
     NoNumber,
+    NoSalt,
     IndexerNotConfigured,
     HttpRequestFailed,
     InvalidResponseBody,

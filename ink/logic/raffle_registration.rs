@@ -1,7 +1,6 @@
 use crate::error::{RaffleError, RaffleError::*};
 use crate::{DrawNumber, Number};
 use ink::prelude::vec::Vec;
-use openbrush::traits::AccountId;
 use phat_rollup_anchor_ink::traits::rollup_anchor::RollupAnchor;
 use scale::{Decode, Encode};
 
@@ -19,6 +18,7 @@ pub enum Status {
     Started,
     RegistrationsOpen,
     RegistrationsClosed,
+    SaltGenerated,
     ResultsReceived,
 }
 
@@ -65,15 +65,34 @@ pub trait Raffle: RollupAnchor {
         Ok(())
     }
 
+    /// generate the salt used by the vrf
+    fn generate_salt(
+        &mut self,
+        draw_number: DrawNumber,
+    ) -> Result<(), RaffleError> {
+        // check the status
+        if self.get_status()? != Status::RegistrationsClosed {
+            return Err(IncorrectStatus);
+        }
+        // check the draw number
+        if self.get_draw_number()? != draw_number {
+            return Err(IncorrectDrawNumber);
+        }
+
+        self.set_status(Status::SaltGenerated);
+        Ok(())
+    }
+
     /// save the results for the draw number.
     fn save_results(
         &mut self,
         draw_number: DrawNumber,
         _numbers: Vec<Number>,
-        _winners: Vec<AccountId>,
+        _has_winner: bool,
     ) -> Result<(), RaffleError> {
         // check the status
-        if self.get_status()? != Status::RegistrationsClosed {
+        let status = self.get_status()?;
+        if status != Status::RegistrationsClosed && status != Status::SaltGenerated {
             return Err(IncorrectStatus);
         }
         // check the draw number
@@ -187,18 +206,18 @@ mod tests {
     }
 
     #[ink::test]
-    fn test_save_results() {
+    fn test_generate_salt() {
         let mut contract = Contract::new();
 
         assert_eq!(
-            contract.save_results(10, vec![], vec![]),
+            contract.generate_salt(10),
             Err(IncorrectStatus)
         );
 
         contract.start().expect("Fail to start");
 
         assert_eq!(
-            contract.save_results(10, vec![], vec![]),
+            contract.generate_salt(10),
             Err(IncorrectStatus)
         );
 
@@ -207,7 +226,7 @@ mod tests {
             .expect("Fail to open the registrations");
 
         assert_eq!(
-            contract.save_results(10, vec![], vec![]),
+            contract.generate_salt(10),
             Err(IncorrectStatus)
         );
 
@@ -216,16 +235,78 @@ mod tests {
             .expect("Fail to close the registrations");
 
         assert_eq!(
-            contract.save_results(9, vec![], vec![]),
-            Err(IncorrectDrawNumber)
-        );
-        assert_eq!(
-            contract.save_results(11, vec![], vec![]),
+            contract.generate_salt(9),
             Err(IncorrectDrawNumber)
         );
 
         contract
-            .save_results(10, vec![], vec![])
+            .generate_salt(10)
+            .expect("Fail to generate the salt");
+        assert_eq!(contract.get_status(), Ok(Status::SaltGenerated));
+        assert_eq!(contract.get_draw_number(), Ok(10));
+    }
+
+    #[ink::test]
+    fn test_save_results_without_salt_generated() {
+        let mut contract = Contract::new();
+
+        assert_eq!(
+            contract.save_results(10, vec![], false),
+            Err(IncorrectStatus)
+        );
+
+        contract.start().expect("Fail to start");
+
+        assert_eq!(
+            contract.save_results(10, vec![], false),
+            Err(IncorrectStatus)
+        );
+
+        contract
+            .open_registrations(10)
+            .expect("Fail to open the registrations");
+
+        assert_eq!(
+            contract.save_results(10, vec![], false),
+            Err(IncorrectStatus)
+        );
+
+        contract
+            .close_registrations(10)
+            .expect("Fail to close the registrations");
+
+        assert_eq!(
+            contract.save_results(9, vec![], false),
+            Err(IncorrectDrawNumber)
+        );
+        assert_eq!(
+            contract.save_results(11, vec![], false),
+            Err(IncorrectDrawNumber)
+        );
+
+        contract
+            .save_results(10, vec![], false)
+            .expect("Fail to save the results");
+        assert_eq!(contract.get_status(), Ok(Status::ResultsReceived));
+        assert_eq!(contract.get_draw_number(), Ok(10));
+    }
+
+
+    #[ink::test]
+    fn test_save_results_wit_salt_generated() {
+        let mut contract = Contract::new();
+        contract.start().expect("Fail to start");
+        contract
+            .open_registrations(10)
+            .expect("Fail to open the registrations");
+        contract
+            .close_registrations(10)
+            .expect("Fail to close the registrations");
+        contract
+            .generate_salt(10)
+            .expect("Fail to generate the salt");
+        contract
+            .save_results(10, vec![], false)
             .expect("Fail to save the results");
         assert_eq!(contract.get_status(), Ok(Status::ResultsReceived));
         assert_eq!(contract.get_draw_number(), Ok(10));
@@ -258,7 +339,7 @@ mod tests {
         assert_eq!(contract.can_participate(), false);
 
         contract
-            .save_results(10, vec![], vec![])
+            .save_results(10, vec![], false)
             .expect("Fail to save the results");
 
         assert_eq!(contract.can_participate(), false);
@@ -275,7 +356,7 @@ mod tests {
             .close_registrations(10)
             .expect("Fail to close the registrations");
         contract
-            .save_results(10, vec![], vec![])
+            .save_results(10, vec![], false)
             .expect("Fail to save the results");
 
         contract
@@ -296,7 +377,7 @@ mod tests {
             .close_registrations(1)
             .expect("Fail to open the Registrations");
         contract
-            .save_results(1, vec![], vec![])
+            .save_results(1, vec![], false)
             .expect("Fail to save the results");
         contract
             .open_registrations(2)
@@ -305,7 +386,7 @@ mod tests {
             .close_registrations(2)
             .expect("Fail to open the Registrations");
         contract
-            .save_results(2, vec![], vec![])
+            .save_results(2, vec![], true)
             .expect("Fail to save the results");
     }
 }

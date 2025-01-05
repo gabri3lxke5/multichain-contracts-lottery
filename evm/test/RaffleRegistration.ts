@@ -6,11 +6,13 @@ import {Signer} from "ethers";
 
 
 // workflow status
-enum Status { NotStarted, Started, RegistrationsOpen, RegistrationsClosed, ResultsReceived }
+enum Status { NotStarted, Started, RegistrationsOpen, RegistrationsClosed, SaltGenerated, ResultsReceived }
 // request type
-enum RequestType {SET_CONFIG_AND_START, OPEN_REGISTRATIONS, CLOSE_REGISTRATIONS, SET_RESULTS}
+enum RequestType {SET_CONFIG_AND_START, OPEN_REGISTRATIONS, CLOSE_REGISTRATIONS, GENERATE_SALT, SET_RESULTS}
 
 const abiCoder = ethers.AbiCoder.defaultAbiCoder();
+
+const registrationContractId = 33;
 
 describe('Test raffle life cycle', () => {
 
@@ -32,8 +34,7 @@ describe('Test raffle life cycle', () => {
       attestor : Signer,
       nbNumber: number,
       min: number,
-      max : number,
-      registrationContractId: number
+      max : number
   ) {
 
     // preconditions
@@ -55,7 +56,8 @@ describe('Test raffle life cycle', () => {
         [RequestType.SET_CONFIG_AND_START, request_bytes]
     );
     const reply = '0x00' + action.substring(2);
-    await expect(contract.connect(attestor).rollupU256CondEq([], [], [], [], [reply])).not.to.be.reverted;
+    await expect(contract.connect(attestor).rollupU256CondEq([], [], [], [], [reply]))
+      .to.emit(contract, 'ConfigUpdated').withArgs(nbNumber, min, max);
 
     // check post conditions
     expect (await contract.nbNumbers()).to.equal(nbNumber);
@@ -88,7 +90,9 @@ describe('Test raffle life cycle', () => {
         [RequestType.OPEN_REGISTRATIONS, request_bytes]
     );
     const reply = '0x00' + action.substring(2);
-    await expect(contract.connect(attestor).rollupU256CondEq([], [], [], [], [reply])).not.to.be.reverted;
+    await expect(contract.connect(attestor).rollupU256CondEq([], [], [], [], [reply]))
+      .to.emit(contract, 'RegistrationsOpen')
+      .withArgs(registrationContractId, drawNumber);
 
     // check post conditions
     expect (await contract.getStatus()).to.equal(Status.RegistrationsOpen);
@@ -116,10 +120,43 @@ describe('Test raffle life cycle', () => {
         [RequestType.CLOSE_REGISTRATIONS, request_bytes]
     );
     const reply = '0x00' + action.substring(2);
-    await expect(contract.connect(attestor).rollupU256CondEq([], [], [], [], [reply])).not.to.be.reverted;
+    await expect(contract.connect(attestor).rollupU256CondEq([], [], [], [], [reply]))
+      .to.emit(contract, 'RegistrationsClosed')
+      .withArgs(registrationContractId, drawNumber);
 
     // check post conditions
     expect (await contract.getStatus()).to.equal(Status.RegistrationsClosed);
+    expect (await contract.getDrawNumber()).to.equal(drawNumber);
+    expect (await contract.can_participate()).to.equal(false);
+
+  }
+
+  async function generateSalt(
+    contract: RaffleRegistration,
+    attestor : Signer,
+    drawNumber: number
+  ) {
+
+    // preconditions
+    expect (await contract.getStatus()).to.equal(Status.RegistrationsClosed);
+    expect (await contract.getDrawNumber()).to.equal(drawNumber);
+    expect (await contract.can_participate()).to.equal(false);
+
+    const request_bytes = abiCoder.encode(
+      ['uint'],
+      [drawNumber]
+    );
+    const action = abiCoder.encode(
+      ['uint', 'bytes'],
+      [RequestType.GENERATE_SALT, request_bytes]
+    );
+    const reply = '0x00' + action.substring(2);
+    await expect(contract.connect(attestor).rollupU256CondEq([], [], [], [], [reply]))
+      .to.emit(contract, 'SaltGenerated')
+      .withArgs(registrationContractId, drawNumber);
+
+    // check post conditions
+    expect (await contract.getStatus()).to.equal(Status.SaltGenerated);
     expect (await contract.getDrawNumber()).to.equal(drawNumber);
     expect (await contract.can_participate()).to.equal(false);
 
@@ -130,24 +167,26 @@ describe('Test raffle life cycle', () => {
       attestor : Signer,
       drawNumber: number,
       numbers: number[],
-      winners: string[]
+      hasWinner: boolean
   ) {
 
     // preconditions
-    expect (await contract.getStatus()).to.equal(Status.RegistrationsClosed);
+    expect (await contract.getStatus()).to.be.oneOf([BigInt(Status.RegistrationsClosed), BigInt(Status.SaltGenerated)]);
     expect (await contract.getDrawNumber()).to.equal(drawNumber);
     expect (await contract.can_participate()).to.equal(false);
 
     const request_bytes = abiCoder.encode(
-        ['uint', 'uint[]', 'address[]'],
-        [drawNumber, numbers, winners]
+        ['uint', 'uint[]', 'bool'],
+        [drawNumber, numbers, hasWinner]
     );
     const action = abiCoder.encode(
         ['uint', 'bytes'],
         [RequestType.SET_RESULTS, request_bytes]
     );
     const reply = '0x00' + action.substring(2);
-    await expect(contract.connect(attestor).rollupU256CondEq([], [], [], [], [reply])).not.to.be.reverted;
+    await expect(contract.connect(attestor).rollupU256CondEq([], [], [], [], [reply]))
+      .to.emit(contract, 'ResultsReceived')
+      .withArgs(registrationContractId, drawNumber, numbers, hasWinner);
 
     // check post conditions
     expect (await contract.getStatus()).to.equal(Status.ResultsReceived);
@@ -155,7 +194,7 @@ describe('Test raffle life cycle', () => {
     expect (await contract.can_participate()).to.equal(false);
 
     // check the storage for status
-    expect ( await contract.getStorage("0x5f737461747573")).to.equal("0x0000000000000000000000000000000000000000000000000000000000000004");
+    expect ( await contract.getStorage("0x5f737461747573")).to.equal("0x0000000000000000000000000000000000000000000000000000000000000005");
     // check the storage for draw number
     expect ( await contract.getStorage("0x5f647261774e756d626572")).to.equal("0x000000000000000000000000000000000000000000000000000000000000000b")
 
@@ -176,7 +215,7 @@ describe('Test raffle life cycle', () => {
     const {contract, attestor} = await loadFixture(deployContractFixture);
 
     // config and start the raffle
-    await setConfigAndStart(contract, attestor, 4, 1, 50, 33);
+    await setConfigAndStart(contract, attestor, 4, 1, 50);
 
     // open the registrations for the draw number 11
     await openRegistrations(contract, attestor, 11);
@@ -188,7 +227,7 @@ describe('Test raffle life cycle', () => {
     const {contract, owner, attestor, addr1, addr2} = await deployContractFixture();
 
     // config and start the raffle
-    await setConfigAndStart(contract, attestor, 4, 1, 50, 33);
+    await setConfigAndStart(contract, attestor, 4, 1, 50);
 
     // open the registrations for the draw number 11
     await openRegistrations(contract, attestor, 11);
@@ -222,36 +261,39 @@ describe('Test raffle life cycle', () => {
     // close the registrations for the draw number 11
     await closeRegistrations(contract, attestor, 11);
 
+    // generate the salt
+    await generateSalt(contract, attestor, 11);
+
     // send the results (no winner)
-    await setResults(contract, attestor, 11, [33, 47, 5, 6], []);
+    await setResults(contract, attestor, 11, [33, 47, 5, 6], false);
 
   });
 
-  it('Attestor submits 1 winner', async () => {
-    const {contract, attestor, addr1} = await loadFixture(openRegistrationsFixture);
+  it('Attestor submits a winner', async () => {
+    const {contract, attestor} = await loadFixture(openRegistrationsFixture);
 
     // close the registrations for the draw number 11
     await closeRegistrations(contract, attestor, 11);
 
     // send the results (no winner)
-    await setResults(contract, attestor, 11, [33, 47, 5, 6], [addr1.address]);
+    await setResults(contract, attestor, 11, [33, 47, 5, 6], true);
 
   });
 
   it('Attestor submits wrong results', async () => {
-    const {contract, attestor, addr1} = await loadFixture(openRegistrationsFixture);
+    const {contract, attestor} = await loadFixture(openRegistrationsFixture);
 
     // close the registrations for the draw number 11
     await closeRegistrations(contract, attestor, 11);
 
     // send the results : winning numbers are incorrect (too many numbers)
-    await setResultsMustBeReverted(contract, attestor, 11, [33, 47, 5, 6, 40], [addr1.address]);
+    await setResultsMustBeReverted(contract, attestor, 11, [33, 47, 5, 6, 40], false);
     // send the results : winning numbers are incorrect (not enough numbers)
-    await setResultsMustBeReverted(contract, attestor, 11, [33, 47, 5], [addr1.address]);
+    await setResultsMustBeReverted(contract, attestor, 11, [33, 47, 5], false);
     // send the results : winning numbers are incorrect (out of range)
-    await setResultsMustBeReverted(contract, attestor, 11, [0, 47, 5, 8], [addr1.address]);
+    await setResultsMustBeReverted(contract, attestor, 11, [0, 47, 5, 8], false);
     // send the results : winning numbers are incorrect (out of range)
-    await setResultsMustBeReverted(contract, attestor, 11, [1, 47, 51, 8], [addr1.address]);
+    await setResultsMustBeReverted(contract, attestor, 11, [1, 47, 51, 8], false);
 
   });
 
@@ -260,12 +302,12 @@ describe('Test raffle life cycle', () => {
       attestor : Signer,
       drawNumber: number,
       numbers: number[],
-      winners: string[]
+      hasWinner: boolean
   ) {
 
     const request_bytes = abiCoder.encode(
-        ['uint', 'uint[]', 'address[]'],
-        [drawNumber, numbers, winners]
+        ['uint', 'uint[]', 'bool'],
+        [drawNumber, numbers, hasWinner]
     );
     const action = abiCoder.encode(
         ['uint', 'bytes'],
@@ -347,8 +389,8 @@ describe('Test raffle life cycle', () => {
   it('check hex - set results - no winner', async () => {
 
     const request_bytes = abiCoder.encode(
-      ['uint', 'uint[]', 'address[]'],
-      [11, [33, 47, 5, 6], []]
+      ['uint', 'uint[]', 'bool'],
+      [11, [33, 47, 5, 6], false]
     );
     const action = abiCoder.encode(
       ['uint8', 'bytes'],
@@ -358,7 +400,7 @@ describe('Test raffle life cycle', () => {
 
     assert.equal(
       reply,
-      "0x00000000000000000000000000000000000000000000000000000000000000000300000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000120000000000000000000000000000000000000000000000000000000000000000b0000000000000000000000000000000000000000000000000000000000000060000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000021000000000000000000000000000000000000000000000000000000000000002f000000000000000000000000000000000000000000000000000000000000000500000000000000000000000000000000000000000000000000000000000000060000000000000000000000000000000000000000000000000000000000000000",
+      "0x00000000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000b0000000000000000000000000000000000000000000000000000000000000060000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000021000000000000000000000000000000000000000000000000000000000000002f00000000000000000000000000000000000000000000000000000000000000050000000000000000000000000000000000000000000000000000000000000006",
       "reply doesn't match"
     );
   });
@@ -366,8 +408,8 @@ describe('Test raffle life cycle', () => {
   it('check hex - set results - 1 winner', async () => {
 
     const request_bytes = abiCoder.encode(
-      ['uint', 'uint[]', 'address[]'],
-      [11, [33, 47, 5, 6], ['0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc']]
+      ['uint', 'uint[]', 'bool'],
+      [11, [33, 47, 5, 6], true]
     );
     const action = abiCoder.encode(
       ['uint', 'bytes'],
@@ -377,7 +419,7 @@ describe('Test raffle life cycle', () => {
 
     assert.equal(
       reply,
-      "0x00000000000000000000000000000000000000000000000000000000000000000300000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000140000000000000000000000000000000000000000000000000000000000000000b0000000000000000000000000000000000000000000000000000000000000060000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000021000000000000000000000000000000000000000000000000000000000000002f0000000000000000000000000000000000000000000000000000000000000005000000000000000000000000000000000000000000000000000000000000000600000000000000000000000000000000000000000000000000000000000000010000000000000000000000003c44cdddb6a900fa2b585dd299e03d12fa4293bc",
+      "0x00000000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000b0000000000000000000000000000000000000000000000000000000000000060000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000021000000000000000000000000000000000000000000000000000000000000002f00000000000000000000000000000000000000000000000000000000000000050000000000000000000000000000000000000000000000000000000000000006",
       "reply doesn't match"
     );
   });

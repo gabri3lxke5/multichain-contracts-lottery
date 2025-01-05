@@ -9,13 +9,14 @@ import {RaffleRegistrationEvm} from "./lottoRegistrationEvm";
 const argv = yargs(process.argv.slice(2)).options({
     dc: {alias: 'displayConfiguration', desc: 'Display the configuration (contract and http addresses)'},
     di: {alias: 'display', desc: 'Display Status and Draw Number of all contracts'},
-    cha: {alias: 'checkAttestors', desc: 'Check if the attestor is granted in all contracts'},
-    inst: {alias: 'instantiate', desc: 'Instantiate the smart contract Manager'},
-    confM: {alias: 'configureManager', desc: 'Configure the smart contract Manager'},
-    confC: {alias: 'configureCommunicator', desc: 'Configure the smart contract Communicator'},
-    ga: {alias: 'grantAttestors', desc: 'Grant the attestor in all contracts'},
-    start:  {alias: 'start', desc: 'Start the raffle'},
-    sync:  {alias: 'synchronize', desc: 'Synchronize the status between smart contracts and automatically close the registrations'},
+    ca: {alias: 'checkAttestors', desc: 'Check if the attestor is granted in all contracts'},
+    i: {alias: 'instantiate', desc: 'Instantiate the smart contract Manager'},
+    cm: {alias: 'configureManager', desc: 'Configure the smart contract Manager'},
+    cc: {alias: 'configureCommunicator', desc: 'Configure the smart contract Communicator'},
+    g: {alias: 'grantAttestors', desc: 'Grant the attestor in all contracts'},
+    st:  {alias: 'start', desc: 'Start the raffle'},
+    sy:  {alias: 'synchronize', desc: 'Synchronize the status between smart contracts and automatically close the registrations'},
+    p:  {alias: 'participate', desc: 'Participate to the lottery - Synchronize is required'},
     net: {alias: 'network', choices:['testnet'], type:'string', desc: 'Specify the network', requiresArg: true},
     metaTx: {alias: 'metaTransactions', desc: 'Enable meta transactions (separate attestor and sender addresses)', type: "boolean", default: false},
 }).version('0.1').parseSync();
@@ -37,6 +38,32 @@ async function run() : Promise<void>{
                 const raffleRegistration = new RaffleRegistrationEvm(raffleRegistrationConfig);
                 await raffleRegistration.connect();
                 await raffleRegistration.display();
+            }
+        }
+    }
+
+    async function participate() : Promise<void>{
+
+        let numbers : Number[] = [];
+        for (let i = 0; i < config.raffleConfig.nbNumbers; i++){
+            numbers.push(config.raffleConfig.minNumber + i);
+        }
+
+        for (const raffleRegistrationConfig of config.lottoRegistrations){
+            if (isWasmContract(raffleRegistrationConfig.contractConfig.call)) {
+                // wasm contract
+                const raffleRegistration = new RaffleRegistrationWasm(raffleRegistrationConfig);
+                await raffleRegistration.connect();
+                if (await raffleRegistration.canParticipate()){
+                    await raffleRegistration.participate(numbers)
+                }
+            } else {
+                //evm contract
+                const raffleRegistration = new RaffleRegistrationEvm(raffleRegistrationConfig);
+                await raffleRegistration.connect();
+                if (await raffleRegistration.canParticipate()){
+                    await raffleRegistration.participate(numbers)
+                }
             }
         }
     }
@@ -221,6 +248,11 @@ async function run() : Promise<void>{
                     // wait 20 seconds
                     await new Promise(f => setTimeout(f, 20000));
                 }
+            }
+
+            if (argv.participate) {
+                // participate via the different contracts
+                await participate();
             }
 
             // close the registrations

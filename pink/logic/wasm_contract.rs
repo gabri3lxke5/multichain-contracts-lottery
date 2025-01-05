@@ -6,7 +6,7 @@ use alloc::vec::Vec;
 use phat_offchain_rollup::clients::ink::{Action, InkRollupClient};
 use scale::Encode;
 
-use crate::raffle_manager_contract::{LottoManagerRequestMessage, LottoManagerResponseMessage, RaffleManagerStatus};
+use crate::raffle_manager_contract::RaffleManagerStatus;
 use crate::raffle_registration_contract::{
     RaffleRegistrationContract, RaffleRegistrationStatus, RequestForAction,
 };
@@ -170,14 +170,13 @@ mod tests {
 
         let response = LottoManagerResponseMessage::WinningNumbers(draw_number, numbers, hash);
         let encoded_response = response.encode();
-        let expected : Vec<u8> = hex::decode("03060000001004003100290010000000000000000000000000000000000000000000000000000000000000000000").expect("hex decode failed");
+        let expected : Vec<u8> = hex::decode("04060000001004003100290010000000000000000000000000000000000000000000000000000000000000000000").expect("hex decode failed");
         assert_eq!(expected, encoded_response);
 
-        let winners = vec![];
-        let response = LottoManagerResponseMessage::Winners(draw_number, winners, hash);
+        let response = LottoManagerResponseMessage::Winners(draw_number, vec![], vec![], hash);
         let encoded_response = response.encode();
         let expected: Vec<u8> = hex::decode(
-            "0406000000000000000000000000000000000000000000000000000000000000000000000000",
+            "050600000000000000000000000000000000000000000000000000000000000000000000000000",
         )
         .expect("hex decode failed");
         assert_eq!(expected, encoded_response);
@@ -218,13 +217,6 @@ mod tests {
 
         ink::env::debug_println!("encoded_request: {encoded_request:02x?}");
         assert_eq!(expected, encoded_request);
-
-
-        let draw_number = 1;
-        let numbers = vec![4, 49, 41, 16];
-        let hash = [0; 32];
-
-        // ""
     }
 
    #[ink::test]
