@@ -21,9 +21,9 @@ Another video explains the interaction between smart contracts: [Smart Contracts
 Lotto is a multi-chain dApp that includes multiple smart contracts:
 
 - `The Manager`:
-  [This smart contract](ink/contracts/raffle_manager/lib.rs), written in Rust and Ink!, is deployed on Astar Network. It knows the state of all other smart contracts and decides what actions to perform for each smart contract. It is the brain of the application.
+  This [smart contract](ink/contracts/raffle_manager/lib.rs), written in Rust and Ink!, is deployed on Astar Network. It knows the state of all other smart contracts and decides what actions to perform for each smart contract. It is the brain of the application.
 - `The Communicator`:
-  [This smart contract](ink/contracts/raffle_registration/lib.rs), written in Rust and Ink!, is deployed on Phala Network. It enables communication between smart contracts by communicating with the contract manager and transmitting actions to other contracts.
+  This [smart contract](ink/contracts/raffle_registration/lib.rs), written in Rust and Ink!, is deployed on Phala Network. It enables communication between smart contracts by communicating with the contract manager and transmitting actions to other contracts.
 - `The Participation Recorder` (WASM and EVM versions):
   These smart contracts record users' participation in the lottery.
   A version has been written in [Rust and Ink!](ink/contracts/raffle_registration/lib.rs)  and can be deployed on any Substrate chain where the Contracts pallet is deployed, like Astar Network.
@@ -88,6 +88,4 @@ That’s why I suggest deploying the dApp on at least three different blockchain
 
 ## Possible evolution with NFTs integration
 
-NFTs can be integrated to serve as lottery tickets. These NFTs can be periodically airdropped to DOT stakers.
-In this way, later, the lottery could be limited only to the holder of these NFTs.
-Offering these NFTs to DOT stakers for free could provide an additional use case and increased attractiveness to the DOT token.
+NFTs can be integrated to serve as lottery tickets and NFT participation receipts.
