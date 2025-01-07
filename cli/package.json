@@ -2,11 +2,6 @@
   "name": "lotto-multichain-cli",
   "version": "1.0.0",
   "main": "index.js",
-  "scripts": {
-    "build" : "yarn generate:defs && yarn generate:meta",
-    "generate:defs": "ts-node --skip-project node_modules/.bin/polkadot-types-from-defs --package interfaces --input ./metadata",
-    "generate:meta": "ts-node --skip-project node_modules/.bin/polkadot-types-from-chain --package ./interfaces --output .src/interfaces --endpoint wss://rps.astar.network"
-  },
   "author": "GuiGou",
   "description": "",
   "dependencies": {
