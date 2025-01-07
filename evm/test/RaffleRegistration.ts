@@ -45,7 +45,7 @@ describe('Test raffle life cycle', () => {
     expect (await contract.getStatus()).to.equal(Status.NotStarted);
 
     expect (await contract.getDrawNumber()).to.equal(0);
-    expect (await contract.can_participate()).to.equal(false);
+    expect (await contract.canParticipate()).to.equal(false);
 
     const request_bytes = abiCoder.encode(
         ['uint8', 'uint', 'uint', 'uint'],
@@ -66,7 +66,7 @@ describe('Test raffle life cycle', () => {
     expect (await contract.registrationContractId()).to.equal(registrationContractId);
     expect (await contract.getStatus()).to.equal(Status.Started);
     expect (await contract.getDrawNumber()).to.equal(0);
-    expect (await contract.can_participate()).to.equal(false);
+    expect (await contract.canParticipate()).to.equal(false);
 
   }
 
@@ -77,7 +77,7 @@ describe('Test raffle life cycle', () => {
   ) {
 
 
-    expect (await contract.can_participate()).to.equal(false);
+    expect (await contract.canParticipate()).to.equal(false);
 
     console.log("openRegistrations");
 
@@ -97,7 +97,7 @@ describe('Test raffle life cycle', () => {
     // check post conditions
     expect (await contract.getStatus()).to.equal(Status.RegistrationsOpen);
     expect (await contract.getDrawNumber()).to.equal(drawNumber);
-    expect (await contract.can_participate()).to.equal(true);
+    expect (await contract.canParticipate()).to.equal(true);
   }
 
   async function closeRegistrations(
@@ -109,7 +109,7 @@ describe('Test raffle life cycle', () => {
     // preconditions
     expect (await contract.getStatus()).to.equal(Status.RegistrationsOpen);
     expect (await contract.getDrawNumber()).to.equal(drawNumber);
-    expect (await contract.can_participate()).to.equal(true);
+    expect (await contract.canParticipate()).to.equal(true);
 
     const request_bytes = abiCoder.encode(
         ['uint'],
@@ -127,7 +127,7 @@ describe('Test raffle life cycle', () => {
     // check post conditions
     expect (await contract.getStatus()).to.equal(Status.RegistrationsClosed);
     expect (await contract.getDrawNumber()).to.equal(drawNumber);
-    expect (await contract.can_participate()).to.equal(false);
+    expect (await contract.canParticipate()).to.equal(false);
 
   }
 
@@ -140,7 +140,7 @@ describe('Test raffle life cycle', () => {
     // preconditions
     expect (await contract.getStatus()).to.equal(Status.RegistrationsClosed);
     expect (await contract.getDrawNumber()).to.equal(drawNumber);
-    expect (await contract.can_participate()).to.equal(false);
+    expect (await contract.canParticipate()).to.equal(false);
 
     const request_bytes = abiCoder.encode(
       ['uint'],
@@ -158,7 +158,7 @@ describe('Test raffle life cycle', () => {
     // check post conditions
     expect (await contract.getStatus()).to.equal(Status.SaltGenerated);
     expect (await contract.getDrawNumber()).to.equal(drawNumber);
-    expect (await contract.can_participate()).to.equal(false);
+    expect (await contract.canParticipate()).to.equal(false);
 
   }
 
@@ -173,7 +173,7 @@ describe('Test raffle life cycle', () => {
     // preconditions
     expect (await contract.getStatus()).to.be.oneOf([BigInt(Status.RegistrationsClosed), BigInt(Status.SaltGenerated)]);
     expect (await contract.getDrawNumber()).to.equal(drawNumber);
-    expect (await contract.can_participate()).to.equal(false);
+    expect (await contract.canParticipate()).to.equal(false);
 
     const request_bytes = abiCoder.encode(
         ['uint', 'uint[]', 'bool'],
@@ -191,7 +191,7 @@ describe('Test raffle life cycle', () => {
     // check post conditions
     expect (await contract.getStatus()).to.equal(Status.ResultsReceived);
     expect (await contract.getDrawNumber()).to.equal(drawNumber);
-    expect (await contract.can_participate()).to.equal(false);
+    expect (await contract.canParticipate()).to.equal(false);
 
     // check the storage for status
     expect ( await contract.getStorage("0x5f737461747573")).to.equal("0x0000000000000000000000000000000000000000000000000000000000000005");
