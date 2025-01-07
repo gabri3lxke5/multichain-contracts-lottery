@@ -3,7 +3,7 @@
 ## Build
 
 ```shell
-cargo contract build
+cargo build
 ```
 
 ## Unit tests
