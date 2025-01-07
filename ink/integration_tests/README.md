@@ -12,6 +12,5 @@ export CONTRACTS_NODE="YOUR_CONTRACTS_NODE_PATH"
 
 And finally execute the following command to start e2e tests execution.
 ```shell
-cd ../../integration_tests
 cargo test --features=e2e-tests
 ```
