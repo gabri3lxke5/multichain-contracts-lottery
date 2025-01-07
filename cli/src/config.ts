@@ -1,8 +1,8 @@
-const lottoDrawAddress = '0x5bf409916abe624388d2d3ae6419ac02e45c7ba4abae2ddf4ac14999dc89beed';
-const lottoManagerAddress = 'WSV8MsLfTrrcnaWuS1nFt3GftFhm4qFpdzyrWqveswzZnZG';
-const shibuyaRegistrationContractAddress = 'Zq467YUQMoiP3xVzut2r5bsp6r8BZd4vq1GDEgvUbBktjW7';
-const moonbaseRegistrationContractAddress = '0x16A4Adc12Bb8558A7b800fB7bF837Bdb3BdB161c';
-const minatoRegistrationContractAddress = '0xA8AE9c3F7bc784Ccd1E6013c59A233600C6dE90A';
+const lottoDrawAddress = '0x269bdbdef7285a1bdba7f68c79c1165705f20508e5e7c545b4fd10a6f345523e';
+const lottoManagerAddress = 'acKRTkuTsGESFmsy3wcvWTyfRW6xL4QY1gMhjNVtD5yUB7d';
+const shibuyaRegistrationContractAddress = 'bSm4f7WjbxFMbo4fRUGw7oHvva65P8m8jCqedFsXAwUJx7V';
+const moonbaseRegistrationContractAddress = '0x987461a5eF325f9f217D2b777CeDCf3b9c4D62d5';
+const minatoRegistrationContractAddress = '0x04d884675E5790721cb5F24D41D460E921C08f17';
 
 export interface RaffleConfig {
     readonly nbNumbers: number;
@@ -91,7 +91,7 @@ class TestnetConfig implements Config {
         nbNumbers = 4;
         minNumber = 1;
         maxNumber = 50;
-        numberOfBlocksForParticipation = 10; // 6s/block = 1 minutes
+        numberOfBlocksForParticipation = 50000; // 6s/block - 100 000 blocks = 7 jours
         minNumberSalts = 2;
     };
     lottoManager = new class implements SmartContractConfig {
@@ -102,8 +102,7 @@ class TestnetConfig implements Config {
         wssRpc = 'wss://poc6.phala.network/ws';
         address = lottoDrawAddress;
     };
-    lottoRegistrations = [registrationContractShibuya, registrationContractMoonbase];
-    //lottoRegistrations = [registrationContractShibuya, registrationContractMinato, registrationContractMoonbase];
+    lottoRegistrations = [registrationContractShibuya, registrationContractMinato, registrationContractMoonbase];
     indexer = "https://query.substrate.fi/lotto-multichain-subquery-testnet";
 }
 
