@@ -14,6 +14,7 @@ Players can participate in the lottery on different chains using either EVM or S
 Everything is automated and decentralized via WASM smart contracts or Solidity smart contracts. These smart contracts communicate with each other.
 
 You can find a presentation of the dApp here: [Lotto dApp Presentation](https://youtu.be/r3iTKy5NOg4)
+
 Another video explains the interaction between smart contracts: [Smart Contracts Interaction](https://youtu.be/jwdbL1Mynw8)
 
 ## Project Overview
@@ -47,22 +48,33 @@ All contracts are battle-tested via unit tests and integration tests.
 The dApp settings should be chosen based on the size of the jackpot.
 With a big jackpot, the probability of finding the winning numbers should be low.
 
-With 100,000 DOT as jackpot, we suggest the following parameters:
+With $10,000 in jackpot, we suggest the following parameters:
+- The players can choose 5 numbers between 1 and 50. There are more 2M possibilities.
+- The draw will take place draw every 100 000 blocks (around 1 week with 1 block per 6 second).
+- With these parameters, the tx would have to cost less than $0.0047 for it to be economically interesting to spam the blockchains with all available combinations to have a possible gain.
+
+With $100,000 in jackpot, we suggest the following parameters:
+- The players can choose 6 numbers between 1 and 50. There are more 15M possibilities.
+- The draw will take place draw every 100 000 blocks (around 1 week with 1 block per 6 second). 
+- With these parameters, the tx would have to cost less than $0.0063 for it to be economically interesting to spam the blockchains with all available combinations to have a possible gain.
+
+With $1M in jackpot, we suggest the following parameters:
 - The players can choose 6 numbers between 1 and 99. There are more 1 billion possibilities.
 - The draw will take place draw every 100 000 blocks (around 1 week with 1 block per 6 second).
-
-With these parameters and a jackpot of around $1M, the tx would have to cost less than $0.00089 for it to be economically interesting to spam the blockchains with all available combinations to have a possibile gain.
+- With these parameters, the tx would have to cost less than $0.00089 for it to be economically interesting to spam the blockchains with all available combinations to have a possible gain.
 
 Other possible combinations:
 
-| Parameters | Possible combinations |
-|------------|-----------------------|
-| 6 numbers between 1 and 50 | 15,890,700 |
-| 7 numbers between 1 and 50 | 99,884,400 |
-| 8 numbers between 1 and 50 | 536,878,650 |
-| 6 numbers between 1 and 99 | 1,120,529,256 |
-| 7 numbers between 1 and 99 | 14,887,031,544 |
-| 8 numbers between 1 and 99 | 171,200,862,756 |
+| Parameters                 | Possible combinations |
+|----------------------------|----------------------:|
+| 5 numbers between 1 and 50 |              2,18,760 |
+| 6 numbers between 1 and 50 |            15,890,700 |
+| 7 numbers between 1 and 50 |            99,884,400 |
+| 8 numbers between 1 and 50 |           536,878,650 |
+| 5 numbers between 1 and 99 |            71,523,144 |
+| 6 numbers between 1 and 99 |         1,120,529,256 |
+| 7 numbers between 1 and 99 |        14,887,031,544 |
+| 8 numbers between 1 and 99 |       171,200,862,756 |
 
 
 ## Where the dApp will be deployed
